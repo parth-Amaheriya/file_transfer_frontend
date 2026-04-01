@@ -1,9 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 export interface DeviceDescriptor {
-  id: string;
-  name: string;
-  type: string;
+  identifier: string;
+  label?: string;
+  metadata?: { type?: string };
 }
 
 export interface PairingCodeOut {
@@ -35,7 +35,7 @@ export const api = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(device),
+      body: JSON.stringify({ device }),
     });
     if (!response.ok) throw new Error("Failed to initiate pairing");
     return response.json();
@@ -47,7 +47,7 @@ export const api = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(device),
+      body: JSON.stringify({ device }),
     });
     if (!response.ok) throw new Error("Failed to join pairing");
     return response.json();

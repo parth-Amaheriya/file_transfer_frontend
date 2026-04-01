@@ -23,12 +23,20 @@ const Session = () => {
   const wsRef = useRef<WebSocket | null>(null);
 
   const initiateMutation = useMutation({
-    mutationFn: () => api.initiatePairing({ id: "device1", name: "My Device", type: "desktop" }),
+    mutationFn: () => api.initiatePairing({ 
+      identifier: crypto.randomUUID(), 
+      label: "My Device", 
+      metadata: { type: "desktop" } 
+    }),
     onSuccess: (data) => setPairing(data),
   });
 
   const joinMutation = useMutation({
-    mutationFn: (code: string) => api.joinPairing(code, { id: "device2", name: "My Device", type: "desktop" }),
+    mutationFn: (code: string) => api.joinPairing(code, { 
+      identifier: crypto.randomUUID(), 
+      label: "My Device", 
+      metadata: { type: "desktop" } 
+    }),
     onSuccess: (data) => setPairing(data),
   });
 
