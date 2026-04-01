@@ -10,13 +10,6 @@ export interface FileItem {
   status: "sending" | "receiving" | "completed";
   type: "image" | "video" | "archive" | "other";
 }
-  id: string;
-  name: string;
-  size: string;
-  progress: number;
-  status: "sending" | "receiving" | "completed";
-  type: "image" | "video" | "archive" | "other";
-}
 
 const typeIcons = {
   image: FileImage,
@@ -91,33 +84,6 @@ const FileTransferPanel = ({ onFileUpload, files }: FileTransferPanelProps) => {
                 {file.status === "sending" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "receiving" && <ArrowDown className="h-4 w-4 text-primary" />}
                 {file.status === "completed" && <Check className="h-4 w-4 text-accent" />}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-export default FileTransferPanel;
-                <Icon className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-sm font-medium truncate text-foreground">{file.name}</p>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {file.status === "completed" ? (
-                      <Check className="h-4 w-4 text-accent" />
-                    ) : file.status === "sending" ? (
-                      <ArrowUp className="h-3.5 w-3.5 text-primary" />
-                    ) : (
-                      <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
-                    )}
-                    <span className="text-xs text-muted-foreground">{file.size}</span>
-                  </div>
-                </div>
-                <Progress value={file.progress} className="h-1.5" />
               </div>
             </div>
           );

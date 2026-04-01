@@ -59,26 +59,3 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
 };
 
 export default MessagingPanel;
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-2 pt-3 border-t border-border mt-3">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Type a message..."
-        />
-        <Button size="icon" onClick={send} disabled={!input.trim()}>
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
-      <p className="text-[10px] text-muted-foreground mt-1.5 text-right">Press Enter to send</p>
-    </div>
-  );
-};
-
-export default MessagingPanel;

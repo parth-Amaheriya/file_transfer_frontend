@@ -147,38 +147,6 @@ const Session = () => {
               <TabsContent value="code">
                 <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
               </TabsContent>
-                  Code
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} files={files} />
-              </TabsContent>
-
-              <TabsContent value="messages">
-                <MessagingPanel messages={messages} onSendMessage={sendMessage} />
-              </TabsContent>
-
-              <TabsContent value="code">
-                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
-              </TabsContent>
-            </Tabs>
-          </div>
-                  Code
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} files={files} />
-              </TabsContent>
-
-              <TabsContent value="messages">
-                <MessagingPanel messages={messages} onSendMessage={sendMessage} />
-              </TabsContent>
-
-              <TabsContent value="code">
-                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
-              </TabsContent>
             </Tabs>
           </div>
         </div>
