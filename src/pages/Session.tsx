@@ -68,7 +68,7 @@ const Session = () => {
   }, [pairing, joinCode]);
 
   useEffect(() => {
-    if (pairing?.status === "connected") {
+    if (pairing?.status === "connected" && !wsRef.current) {
       // Determine our device ID based on whether we initiated or joined
       const deviceId = joinCode ? pairing.peer?.identifier : pairing.initiator.identifier;
       if (!deviceId) return;
@@ -92,17 +92,22 @@ const Session = () => {
       ws.onclose = () => {
         console.log("WebSocket closed");
         setWsConnected(false);
+        wsRef.current = null; // Allow reconnection if needed
       };
       ws.onerror = () => {
         console.log("WebSocket error");
         setWsConnected(false);
+        wsRef.current = null; // Allow reconnection if needed
       };
 
       return () => {
-        ws.close();
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
       };
     }
-  }, [pairing, joinCode]);
+  }, [pairing?.status, pairing?.id, joinCode]);
 
   const sendMessage = (content: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
