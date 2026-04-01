@@ -31,10 +31,18 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
     <div className="flex flex-col h-[400px]">
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 p-1">
         {messages.filter(m => m.type === "text" && !m.isCode).map((msg, index) => (
-          <div key={index} className={`flex justify-end animate-fade-in`}>
-            <div className="max-w-[75%] rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground rounded-br-md">
+          <div key={index} className={`flex ${msg.sender === "you" ? "justify-end" : "justify-start"} animate-fade-in`}>
+            <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+              msg.sender === "you" 
+                ? "bg-primary text-primary-foreground rounded-br-md" 
+                : "bg-secondary text-secondary-foreground rounded-bl-md"
+            }`}>
               <p className="text-sm leading-relaxed">{msg.content}</p>
-              <p className="text-[10px] mt-1 text-primary-foreground/60">
+              <p className={`text-[10px] mt-1 ${
+                msg.sender === "you" 
+                  ? "text-primary-foreground/60" 
+                  : "text-secondary-foreground/60"
+              }`}>
                 {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
               </p>
             </div>
