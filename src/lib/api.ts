@@ -59,8 +59,9 @@ export const api = {
     return response.json();
   },
 
-  async uploadFile(pairingId: string, file: File): Promise<void> {
+  async uploadFile(pairingId: string, file: File, deviceId: string): Promise<void> {
     const formData = new FormData();
+    formData.append("device_id", deviceId);
     formData.append("file", file);
     const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/files`, {
       method: "POST",

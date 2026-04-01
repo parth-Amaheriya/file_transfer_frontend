@@ -119,8 +119,12 @@ const Session = () => {
 
   const uploadFile = async (file: File) => {
     if (pairing) {
+      // Determine our device ID based on whether we initiated or joined
+      const deviceId = joinCode ? pairing.peer?.identifier : pairing.initiator.identifier;
+      if (!deviceId) return;
+      
       try {
-        await api.uploadFile(pairing.id, file);
+        await api.uploadFile(pairing.id, file, deviceId);
         // Add to files list
         const fileItem = {
           id: Date.now().toString(),
