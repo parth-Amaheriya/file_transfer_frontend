@@ -137,7 +137,7 @@ const Session = () => {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6">
           <ConnectionPanel
             pairingCode={pairing.code}
-            status={wsConnected ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
+            status={wsConnectediring.status === "pending" ? "waiting" : "connecting"}
             onDisconnect={() => navigate("/")}
           />
 
