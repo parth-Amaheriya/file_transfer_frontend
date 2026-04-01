@@ -2,7 +2,14 @@ import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowD
 import { useState, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 
-interface FileItem {
+export interface FileItem {
+  id: string;
+  name: string;
+  size: string;
+  progress: number;
+  status: "sending" | "receiving" | "completed";
+  type: "image" | "video" | "archive" | "other";
+}
   id: string;
   name: string;
   size: string;

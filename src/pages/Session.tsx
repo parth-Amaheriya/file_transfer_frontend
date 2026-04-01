@@ -9,6 +9,7 @@ import ConnectionPanel from "@/components/ConnectionPanel";
 import FileTransferPanel from "@/components/FileTransferPanel";
 import MessagingPanel from "@/components/MessagingPanel";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
+import { type FileItem } from "@/components/FileTransferPanel";
 import { api, type PairingCodeOut, type Message } from "@/lib/api";
 
 const Session = () => {
@@ -18,7 +19,7 @@ const Session = () => {
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   const initiateMutation = useMutation({
@@ -131,6 +132,21 @@ const Session = () => {
                 </TabsTrigger>
                 <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
                   <Code className="h-3.5 w-3.5" />
+                  Code
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="files">
+                <FileTransferPanel onFileUpload={uploadFile} files={files} />
+              </TabsContent>
+
+              <TabsContent value="messages">
+                <MessagingPanel messages={messages} onSendMessage={sendMessage} />
+              </TabsContent>
+
+              <TabsContent value="code">
+                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
+              </TabsContent>
                   Code
                 </TabsTrigger>
               </TabsList>
