@@ -124,6 +124,20 @@ const Session = () => {
         if (message.type === "peer_connected") {
           // Update pairing status when peer connects
           setPairing(prev => prev ? { ...prev, status: "connected" } : null);
+        } else if (message.type === "file_shared") {
+          // Handle received file notification
+          const fileItem = {
+            id: `received-${Date.now()}`,
+            name: message.file_name!,
+            size: `${(message.file_size! / 1024 / 1024).toFixed(1)} MB`,
+            progress: 100,
+            status: "completed" as const,
+            type: message.mime_type?.startsWith("image/") ? "image" : 
+                  message.mime_type?.startsWith("video/") ? "video" : 
+                  message.file_name?.endsWith(".zip") || message.file_name?.endsWith(".rar") ? "archive" : "other",
+            direction: "received" as const,
+          };
+          setFiles(prev => [...prev, fileItem]);
         }
         setMessages(prev => [...prev, message]);
         // Handle file messages if needed
@@ -168,6 +182,7 @@ const Session = () => {
           progress: 100,
           status: "completed" as const,
           type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.name.endsWith(".zip") || file.name.endsWith(".rar") ? "archive" : "other",
+          direction: "sent" as const,
         };
         setFiles(prev => [...prev, fileItem]);
         // Send file_init message via WS
@@ -175,6 +190,24 @@ const Session = () => {
         wsRef.current?.send(JSON.stringify(message));
       } catch (error) {
         console.error("Upload failed", error);
+      }
+    }
+  };
+
+  const downloadFile = async (filename: string) => {
+    if (pairing) {
+      try {
+        const blob = await api.downloadFile(pairing.id, filename);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error("Download failed", error);
       }
     }
   };
@@ -229,7 +262,7 @@ const Session = () => {
               </TabsList>
 
               <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} files={files} />
+                <FileTransferPanel onFileUpload={uploadFile} onFileDownload={downloadFile} files={files} />
               </TabsContent>
 
               <TabsContent value="messages">

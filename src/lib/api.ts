@@ -18,14 +18,14 @@ export interface PairingCodeOut {
 }
 
 export interface Message {
-  type: "text" | "file_init" | "file_chunk" | "file_end" | "peer_connected";
+  type: "text" | "file_init" | "file_chunk" | "file_end" | "peer_connected" | "file_shared";
   content?: string;
   file_name?: string;
   file_size?: number;
   chunk_data?: string;
   chunk_size?: number;
   mime_type?: string;
-  timestamp?: string;
+  timestamp?: string | number;
 }
 
 export const api = {

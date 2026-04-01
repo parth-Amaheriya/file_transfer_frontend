@@ -1,6 +1,7 @@
-import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown } from "lucide-react";
+import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { useState, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 
 export interface FileItem {
   id: string;
@@ -9,6 +10,7 @@ export interface FileItem {
   progress: number;
   status: "sending" | "receiving" | "completed";
   type: "image" | "video" | "archive" | "other";
+  direction?: "sent" | "received";
 }
 
 const typeIcons = {
@@ -20,10 +22,11 @@ const typeIcons = {
 
 interface FileTransferPanelProps {
   onFileUpload: (file: File) => void;
+  onFileDownload?: (filename: string) => void;
   files: FileItem[];
 }
 
-const FileTransferPanel = ({ onFileUpload, files }: FileTransferPanelProps) => {
+const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransferPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,7 +86,17 @@ const FileTransferPanel = ({ onFileUpload, files }: FileTransferPanelProps) => {
               <div className="flex items-center gap-2 shrink-0">
                 {file.status === "sending" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "receiving" && <ArrowDown className="h-4 w-4 text-primary" />}
-                {file.status === "completed" && <Check className="h-4 w-4 text-accent" />}
+                {file.status === "completed" && file.direction === "received" && onFileDownload && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => onFileDownload(file.name)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
+                {file.status === "completed" && file.direction !== "received" && <Check className="h-4 w-4 text-accent" />}
               </div>
             </div>
           );
