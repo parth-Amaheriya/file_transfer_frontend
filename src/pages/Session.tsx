@@ -180,24 +180,41 @@ const Session = () => {
 
   const uploadFile = async (file: File) => {
     if (pairing) {
+      // Add to files list with initial status
+      const fileId = Date.now().toString();
+      const fileItem = {
+        id: fileId,
+        name: file.name,
+        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+        progress: 0,
+        status: "uploading" as const,
+        type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.name.endsWith(".zip") || file.name.endsWith(".rar") ? "archive" : "other",
+        direction: "sent" as const,
+      };
+      setFiles(prev => [...prev, fileItem]);
+
       try {
-        await api.uploadFile(pairing.id, file, deviceId);
-        // Add to files list
-        const fileItem = {
-          id: Date.now().toString(),
-          name: file.name,
-          size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-          progress: 100,
-          status: "completed" as const,
-          type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.name.endsWith(".zip") || file.name.endsWith(".rar") ? "archive" : "other",
-          direction: "sent" as const,
-        };
-        setFiles(prev => [...prev, fileItem]);
+        await api.uploadFile(pairing.id, file, deviceId, (progress) => {
+          // Update progress
+          setFiles(prev => prev.map(f => 
+            f.id === fileId ? { ...f, progress: Math.round(progress) } : f
+          ));
+        });
+        
+        // Mark as completed
+        setFiles(prev => prev.map(f => 
+          f.id === fileId ? { ...f, progress: 100, status: "completed" as const } : f
+        ));
+        
         // Send file_init message via WS
         const message: Message = { type: "file_init", file_name: file.name, file_size: file.size, mime_type: file.type };
         wsRef.current?.send(JSON.stringify(message));
       } catch (error) {
         console.error("Upload failed", error);
+        // Mark as failed
+        setFiles(prev => prev.map(f => 
+          f.id === fileId ? { ...f, status: "failed" as const } : f
+        ));
       }
     }
   };

@@ -63,15 +63,35 @@ export const api = {
     return response.json();
   },
 
-  async uploadFile(pairingId: string, file: File, deviceId: string): Promise<void> {
-    const formData = new FormData();
-    formData.append("device_id", deviceId);
-    formData.append("file", file);
-    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/files`, {
-      method: "POST",
-      body: formData,
+  async uploadFile(pairingId: string, file: File, deviceId: string, onProgress?: (progress: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append("device_id", deviceId);
+      formData.append("file", file);
+
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = (event.loaded / event.total) * 100;
+          onProgress(progress);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Upload failed"));
+      });
+
+      xhr.open("POST", `${API_BASE}/api/pairing/${pairingId}/files`);
+      xhr.send(formData);
     });
-    if (!response.ok) throw new Error("Failed to upload file");
   },
 
   async downloadFile(pairingId: string, filename: string): Promise<Blob> {

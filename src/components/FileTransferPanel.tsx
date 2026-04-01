@@ -8,7 +8,7 @@ export interface FileItem {
   name: string;
   size: string;
   progress: number;
-  status: "sending" | "receiving" | "completed";
+  status: "uploading" | "sending" | "receiving" | "completed" | "failed";
   type: "image" | "video" | "archive" | "other";
   direction?: "sent" | "received";
 }
@@ -65,7 +65,7 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransfer
         />
         <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
         <p className="text-sm font-medium text-foreground">Drop files here or click to upload</p>
-        <p className="text-xs text-muted-foreground mt-1">Any file type, up to 100MB</p>
+        <p className="text-xs text-muted-foreground mt-1">Any file type and size supported</p>
       </div>
 
       <div className="space-y-2">
@@ -79,11 +79,12 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransfer
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{file.name}</p>
                 <p className="text-xs text-muted-foreground">{file.size}</p>
-                {file.status !== "completed" && (
+                {file.status !== "completed" && file.status !== "failed" && (
                   <Progress value={file.progress} className="mt-2 h-1" />
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {file.status === "uploading" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "sending" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "receiving" && <ArrowDown className="h-4 w-4 text-primary" />}
                 {file.status === "completed" && file.direction === "received" && onFileDownload && (
@@ -97,6 +98,7 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransfer
                   </Button>
                 )}
                 {file.status === "completed" && file.direction !== "received" && <Check className="h-4 w-4 text-accent" />}
+                {file.status === "failed" && <span className="text-xs text-destructive">Failed</span>}
               </div>
             </div>
           );
