@@ -128,13 +128,13 @@ const Session = () => {
           // Handle received file notification
           const fileItem = {
             id: `received-${Date.now()}`,
-            name: message.file_name!,
+            name: message.filename!,
             size: `${(message.file_size! / 1024 / 1024).toFixed(1)} MB`,
             progress: 100,
             status: "completed" as const,
             type: message.mime_type?.startsWith("image/") ? "image" : 
                   message.mime_type?.startsWith("video/") ? "video" : 
-                  message.file_name?.endsWith(".zip") || message.file_name?.endsWith(".rar") ? "archive" : "other",
+                  message.filename?.endsWith(".zip") || message.filename?.endsWith(".rar") ? "archive" : "other",
             direction: "received" as const,
           };
           setFiles(prev => [...prev, fileItem]);

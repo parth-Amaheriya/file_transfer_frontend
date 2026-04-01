@@ -21,6 +21,7 @@ export interface Message {
   type: "text" | "file_init" | "file_chunk" | "file_end" | "peer_connected" | "file_shared";
   content?: string;
   file_name?: string;
+  filename?: string;
   file_size?: number;
   chunk_data?: string;
   chunk_size?: number;
