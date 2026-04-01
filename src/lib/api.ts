@@ -28,6 +28,7 @@ export interface Message {
   mime_type?: string;
   timestamp?: string | number;
   sender?: "you" | "peer";
+  isCode?: boolean;
 }
 
 export const api = {

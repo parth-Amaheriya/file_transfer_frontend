@@ -170,6 +170,14 @@ const Session = () => {
     }
   };
 
+  const sendCode = (code: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const message: Message = { type: "text", content: code, sender: "you", isCode: true };
+      wsRef.current.send(JSON.stringify(message));
+      setMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
+    }
+  };
+
   const uploadFile = async (file: File) => {
     if (pairing) {
       try {
@@ -270,7 +278,7 @@ const Session = () => {
               </TabsContent>
 
               <TabsContent value="code">
-                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} messages={messages} />
+                <CodeSnippetPanel onSendCode={sendCode} messages={messages} />
               </TabsContent>
             </Tabs>
           </div>

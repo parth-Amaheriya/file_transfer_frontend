@@ -1,8 +1,9 @@
-import { Copy, Check, Send } from "lucide-react";
+import { Copy, Check, Send, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Message } from "@/lib/api";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface CodeSnippet {
   id: string;
@@ -43,10 +44,11 @@ const detectLanguage = (code: string): string => {
 const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newCode, setNewCode] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Filter and format code messages
+  // Filter and format code messages only
   const codeSnippets: CodeSnippet[] = messages
-    .filter(msg => msg.type === "text" && msg.content)
+    .filter(msg => msg.type === "text" && msg.content && msg.isCode)
     .map((msg, idx) => ({
       id: `code-${idx}`,
       code: msg.content!,
@@ -67,39 +69,81 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
     }
   };
 
+  const truncateCode = (code: string, maxLines: number = 5): { truncated: string; isTruncated: boolean } => {
+    const lines = code.split("\n");
+    if (lines.length > maxLines) {
+      return { truncated: lines.slice(0, maxLines).join("\n"), isTruncated: true };
+    }
+    return { truncated: code, isTruncated: false };
+  };
+
   return (
     <div className="space-y-4">
       {/* Display received code snippets */}
-      <div className="space-y-3">
-        {codeSnippets.map((snippet) => (
-          <div key={snippet.id} className="surface rounded-lg p-4 space-y-3 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-muted-foreground">{snippet.language}</span>
-              <span className="text-xs font-medium text-muted-foreground capitalize">{snippet.sender}</span>
-            </div>
-            <pre className="bg-black rounded-lg p-3 overflow-x-auto">
-              <code className="text-sm text-gray-100 font-mono">{snippet.code}</code>
-            </pre>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => copySnippet(snippet.id, snippet.code)}
-              className="w-full"
-            >
-              {copiedId === snippet.id ? (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Code
-                </>
-              )}
-            </Button>
-          </div>
-        ))}
+      <div className="space-y-3 max-h-[400px] overflow-y-auto">
+        {codeSnippets.length === 0 ? (
+          <p className="text-center text-muted-foreground text-sm py-8">
+            No code snippets yet. Share your first snippet!
+          </p>
+        ) : (
+          codeSnippets.map((snippet) => {
+            const { truncated, isTruncated } = truncateCode(snippet.code, 5);
+            const isExpanded = expandedId === snippet.id;
+
+            return (
+              <Collapsible key={snippet.id} open={isExpanded === snippet.id} onOpenChange={(open) => setExpandedId(open ? snippet.id : null)}>
+                <div className="surface rounded-lg overflow-hidden animate-fade-in">
+                  <CollapsibleTrigger asChild>
+                    <button className="w-full flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer">
+                      <div className="flex items-center gap-3 flex-1">
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded === snippet.id ? "rotate-180" : ""}`} />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">{snippet.language}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {snippet.code.split("\n").length} lines • {snippet.sender === "you" ? "You" : "Peer"}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent className="border-t border-border">
+                    <div className="p-4 space-y-3 bg-card/50">
+                      <pre className="bg-black rounded-lg p-3 overflow-x-auto max-h-[300px] overflow-y-auto">
+                        <code className="text-sm text-gray-100 font-mono whitespace-pre-wrap">
+                          {isExpanded === snippet.id ? snippet.code : truncated}
+                        </code>
+                      </pre>
+                      {isTruncated && isExpanded !== snippet.id && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          ... and {snippet.code.split("\n").length - 5} more lines
+                        </p>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copySnippet(snippet.id, snippet.code)}
+                        className="w-full"
+                      >
+                        {copiedId === snippet.id ? (
+                          <>
+                            <Check className="h-4 w-4 mr-2" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy Code
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            );
+          })
+        )}
       </div>
 
       {/* Send new code */}

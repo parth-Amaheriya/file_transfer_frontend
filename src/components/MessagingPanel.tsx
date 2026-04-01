@@ -30,7 +30,7 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
   return (
     <div className="flex flex-col h-[400px]">
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 p-1">
-        {messages.filter(m => m.type === "text").map((msg, index) => (
+        {messages.filter(m => m.type === "text" && !m.isCode).map((msg, index) => (
           <div key={index} className={`flex justify-end animate-fade-in`}>
             <div className="max-w-[75%] rounded-2xl px-4 py-2.5 bg-primary text-primary-foreground rounded-br-md">
               <p className="text-sm leading-relaxed">{msg.content}</p>
