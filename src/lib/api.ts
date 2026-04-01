@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 export interface DeviceDescriptor {
   id: string;
@@ -76,6 +76,7 @@ export const api = {
   },
 
   createWebSocket(pairingId: string, deviceId: string): WebSocket {
-    return new WebSocket(`${API_BASE.replace('http', 'ws')}/ws/pairing/${pairingId}/${deviceId}`);
+    const wsUrl = API_BASE.replace(/^http/, 'ws');
+    return new WebSocket(`${wsUrl}/ws/pairing/${pairingId}/${deviceId}`);
   },
 };
