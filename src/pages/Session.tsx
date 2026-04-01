@@ -139,7 +139,7 @@ const Session = () => {
           };
           setFiles(prev => [...prev, fileItem]);
         }
-        setMessages(prev => [...prev, message]);
+        setMessages(prev => [...prev, { ...message, sender: "peer" }]);
         // Handle file messages if needed
       };
       ws.onclose = () => {
@@ -164,7 +164,7 @@ const Session = () => {
 
   const sendMessage = (content: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const message: Message = { type: "text", content };
+      const message: Message = { type: "text", content, sender: "you" };
       wsRef.current.send(JSON.stringify(message));
       setMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
     }
@@ -270,7 +270,7 @@ const Session = () => {
               </TabsContent>
 
               <TabsContent value="code">
-                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
+                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} messages={messages} />
               </TabsContent>
             </Tabs>
           </div>

@@ -27,6 +27,7 @@ export interface Message {
   chunk_size?: number;
   mime_type?: string;
   timestamp?: string | number;
+  sender?: "you" | "peer";
 }
 
 export const api = {
