@@ -49,6 +49,24 @@ const Session = () => {
     }
   }, [joinCode]);
 
+  // Poll for pairing status updates for the initiating device
+  useEffect(() => {
+    if (pairing && !joinCode && pairing.status === "pending") {
+      const pollInterval = setInterval(async () => {
+        try {
+          const updatedPairing = await api.getPairing(pairing.code);
+          if (updatedPairing.status !== pairing.status) {
+            setPairing(updatedPairing);
+          }
+        } catch (error) {
+          console.error("Failed to poll pairing status:", error);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [pairing, joinCode]);
+
   useEffect(() => {
     if (pairing?.status === "connected") {
       // Determine our device ID based on whether we initiated or joined
