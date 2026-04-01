@@ -104,6 +104,19 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
                           </p>
                         </div>
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copySnippet(snippet.id, snippet.code);
+                        }}
+                        className="ml-2 p-2 hover:bg-secondary rounded-md transition-colors"
+                      >
+                        {copiedId === snippet.id ? (
+                          <Check className="h-4 w-4 text-accent" />
+                        ) : (
+                          <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        )}
+                      </button>
                     </button>
                   </CollapsibleTrigger>
 
@@ -119,24 +132,6 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
                           ... and {snippet.code.split("\n").length - 5} more lines
                         </p>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copySnippet(snippet.id, snippet.code)}
-                        className="w-full"
-                      >
-                        {copiedId === snippet.id ? (
-                          <>
-                            <Check className="h-4 w-4 mr-2" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy Code
-                          </>
-                        )}
-                      </Button>
                     </div>
                   </CollapsibleContent>
                 </div>
