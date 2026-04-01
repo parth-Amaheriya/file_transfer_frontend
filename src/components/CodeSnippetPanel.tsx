@@ -91,12 +91,12 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
             const isExpanded = expandedId === snippet.id;
 
             return (
-              <Collapsible key={snippet.id} open={isExpanded === snippet.id} onOpenChange={(open) => setExpandedId(open ? snippet.id : null)}>
+              <Collapsible key={snippet.id} open={isExpanded} onOpenChange={(open) => setExpandedId(open ? snippet.id : null)}>
                 <div className="surface rounded-lg overflow-hidden animate-fade-in">
                   <CollapsibleTrigger asChild>
                     <button className="w-full flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer">
                       <div className="flex items-center gap-3 flex-1">
-                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded === snippet.id ? "rotate-180" : ""}`} />
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         <div className="flex-1">
                           <p className="text-sm font-medium text-foreground">{snippet.language}</p>
                           <p className="text-xs text-muted-foreground">
@@ -111,10 +111,10 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
                     <div className="p-4 space-y-3 bg-card/50">
                       <pre className="bg-black rounded-lg p-3 overflow-x-auto max-h-[300px] overflow-y-auto">
                         <code className="text-sm text-gray-100 font-mono whitespace-pre-wrap">
-                          {isExpanded === snippet.id ? snippet.code : truncated}
+                          {isExpanded ? snippet.code : truncated}
                         </code>
                       </pre>
-                      {isTruncated && isExpanded !== snippet.id && (
+                      {isTruncated && !isExpanded && (
                         <p className="text-xs text-muted-foreground text-center">
                           ... and {snippet.code.split("\n").length - 5} more lines
                         </p>
