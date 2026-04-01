@@ -20,6 +20,7 @@ const Session = () => {
   const [pairing, setPairing] = useState<PairingCodeOut | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   const initiateMutation = useMutation({
@@ -50,23 +51,36 @@ const Session = () => {
 
   useEffect(() => {
     if (pairing?.status === "connected") {
-      const deviceId = pairing.initiator.id === "device1" ? "device1" : "device2";
+      // Determine our device ID based on whether we initiated or joined
+      const deviceId = joinCode ? pairing.peer?.identifier : pairing.initiator.identifier;
+      if (!deviceId) return;
+      
       const ws = api.createWebSocket(pairing.id, deviceId);
       wsRef.current = ws;
 
-      ws.onopen = () => console.log("WebSocket connected");
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        setWsConnected(true);
+      };
       ws.onmessage = (event) => {
         const message: Message = JSON.parse(event.data);
         setMessages(prev => [...prev, message]);
         // Handle file messages if needed
       };
-      ws.onclose = () => console.log("WebSocket closed");
+      ws.onclose = () => {
+        console.log("WebSocket closed");
+        setWsConnected(false);
+      };
+      ws.onerror = () => {
+        console.log("WebSocket error");
+        setWsConnected(false);
+      };
 
       return () => {
         ws.close();
       };
     }
-  }, [pairing]);
+  }, [pairing, joinCode]);
 
   const sendMessage = (content: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -123,7 +137,7 @@ const Session = () => {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6">
           <ConnectionPanel
             pairingCode={pairing.code}
-            status={pairing.status === "connected" ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
+            status={wsConnected ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
             onDisconnect={() => navigate("/")}
           />
 
