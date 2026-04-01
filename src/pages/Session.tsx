@@ -17,7 +17,15 @@ const Session = () => {
   const location = useLocation();
   const joinCode = location.state?.joinCode;
 
-  const [pairing, setPairing] = useState<PairingCodeOut | null>(null);
+  const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
+    // Try to restore pairing from sessionStorage on refresh
+    const saved = sessionStorage.getItem("pairing");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [deviceId, setDeviceId] = useState<string>(() => {
+    // Restore device ID from sessionStorage
+    return sessionStorage.getItem("deviceId") || crypto.randomUUID();
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
@@ -25,7 +33,7 @@ const Session = () => {
 
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
-      identifier: crypto.randomUUID(), 
+      identifier: deviceId, 
       label: "My Device", 
       metadata: { type: "desktop" } 
     }),
@@ -33,21 +41,56 @@ const Session = () => {
   });
 
   const joinMutation = useMutation({
-    mutationFn: (code: string) => api.joinPairing(code, { 
-      identifier: crypto.randomUUID(), 
-      label: "My Device", 
-      metadata: { type: "desktop" } 
-    }),
+    mutationFn: async (code: string) => {
+      try {
+        // First try to get the pairing to see if it already exists
+        const existingPairing = await api.getPairing(code);
+        if (existingPairing.status === "connected") {
+          // Already connected, just return the existing pairing
+          return existingPairing;
+        } else {
+          // Try to join if it's still pending
+          return await api.joinPairing(code, { 
+            identifier: deviceId, 
+            label: "My Device", 
+            metadata: { type: "desktop" } 
+          });
+        }
+      } catch (error: any) {
+        // If getPairing fails, try to join directly
+        if (error.message?.includes("not found")) {
+          return await api.joinPairing(code, { 
+            identifier: deviceId, 
+            label: "My Device", 
+            metadata: { type: "desktop" } 
+          });
+        }
+        throw error;
+      }
+    },
     onSuccess: (data) => setPairing(data),
   });
 
+  // Save pairing and deviceId to sessionStorage whenever they change
   useEffect(() => {
-    if (joinCode) {
-      joinMutation.mutate(joinCode);
+    if (pairing) {
+      sessionStorage.setItem("pairing", JSON.stringify(pairing));
     } else {
-      initiateMutation.mutate();
+      sessionStorage.removeItem("pairing");
     }
-  }, [joinCode]);
+    sessionStorage.setItem("deviceId", deviceId);
+  }, [pairing, deviceId]);
+
+  useEffect(() => {
+    // Only initiate/join if we don't have a restored pairing
+    if (!pairing) {
+      if (joinCode) {
+        joinMutation.mutate(joinCode);
+      } else {
+        initiateMutation.mutate();
+      }
+    }
+  }, [joinCode, pairing]);
 
   // Poll for pairing status updates for the initiating device
   useEffect(() => {
@@ -69,10 +112,6 @@ const Session = () => {
 
   useEffect(() => {
     if (pairing?.status === "connected" && !wsRef.current) {
-      // Determine our device ID based on whether we initiated or joined
-      const deviceId = joinCode ? pairing.peer?.identifier : pairing.initiator.identifier;
-      if (!deviceId) return;
-      
       const ws = api.createWebSocket(pairing.id, deviceId);
       wsRef.current = ws;
 
@@ -107,7 +146,7 @@ const Session = () => {
         }
       };
     }
-  }, [pairing?.status, pairing?.id, joinCode]);
+  }, [pairing?.status, pairing?.id, deviceId]);
 
   const sendMessage = (content: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -119,10 +158,6 @@ const Session = () => {
 
   const uploadFile = async (file: File) => {
     if (pairing) {
-      // Determine our device ID based on whether we initiated or joined
-      const deviceId = joinCode ? pairing.peer?.identifier : pairing.initiator.identifier;
-      if (!deviceId) return;
-      
       try {
         await api.uploadFile(pairing.id, file, deviceId);
         // Add to files list
@@ -169,7 +204,11 @@ const Session = () => {
           <ConnectionPanel
             pairingCode={pairing.code}
             status={wsConnected ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
-            onDisconnect={() => navigate("/")}
+            onDisconnect={() => {
+              sessionStorage.removeItem("pairing");
+              sessionStorage.removeItem("deviceId");
+              navigate("/");
+            }}
           />
 
           <div className="surface-elevated rounded-xl p-6">
