@@ -153,13 +153,15 @@ const Session = () => {
               </TabsList>
 
               <TabsContent value="files">
-                <FileTransferPanel />
+                <FileTransferPanel onFileUpload={uploadFile} files={files} />
               </TabsContent>
+
               <TabsContent value="messages">
-                <MessagingPanel />
+                <MessagingPanel messages={messages} onSendMessage={sendMessage} />
               </TabsContent>
+
               <TabsContent value="code">
-                <CodeSnippetPanel />
+                <CodeSnippetPanel onSendCode={(code) => sendMessage(code)} />
               </TabsContent>
             </Tabs>
           </div>
