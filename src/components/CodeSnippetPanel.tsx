@@ -2,6 +2,7 @@ import { Copy, Check, Send, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Message } from "@/lib/api";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -10,10 +11,11 @@ interface CodeSnippet {
   code: string;
   language: string;
   sender: "you" | "peer";
+  title?: string;
 }
 
 interface CodeSnippetPanelProps {
-  onSendCode: (code: string) => void;
+  onSendCode: (code: string, title: string) => void;
   messages: Message[];
 }
 
@@ -44,6 +46,7 @@ const detectLanguage = (code: string): string => {
 const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newCode, setNewCode] = useState("");
+  const [newTitle, setNewTitle] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Filter and format code messages only
@@ -54,6 +57,7 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
       code: msg.content!,
       language: detectLanguage(msg.content!),
       sender: msg.sender === "you" ? "you" : "peer",
+      title: msg.codeTitle,
     }));
 
   const copySnippet = (id: string, code: string) => {
@@ -64,8 +68,9 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
 
   const sendCode = () => {
     if (newCode.trim()) {
-      onSendCode(newCode);
+      onSendCode(newCode, newTitle.trim() || "Untitled Snippet");
       setNewCode("");
+      setNewTitle("");
     }
   };
 
@@ -98,9 +103,9 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
                       <div className="flex items-center gap-3 flex-1">
                         <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">{snippet.language}</p>
+                          <p className="text-sm font-medium text-foreground">{snippet.title || "Untitled Snippet"}</p>
                           <p className="text-xs text-muted-foreground">
-                            {snippet.code.split("\n").length} lines • {snippet.sender === "you" ? "You" : "Peer"}
+                            {snippet.language} • {snippet.code.split("\n").length} lines • {snippet.sender === "you" ? "You" : "Peer"}
                           </p>
                         </div>
                       </div>
@@ -143,6 +148,12 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
 
       {/* Send new code */}
       <div className="space-y-3 border-t border-border pt-4">
+        <Input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="Give your snippet a title (e.g., Authentication Helper)..."
+          className="text-sm"
+        />
         <Textarea
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}

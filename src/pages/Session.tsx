@@ -170,9 +170,9 @@ const Session = () => {
     }
   };
 
-  const sendCode = (code: string) => {
+  const sendCode = (code: string, title: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const message: Message = { type: "text", content: code, sender: "you", isCode: true };
+      const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
       wsRef.current.send(JSON.stringify(message));
       setMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
     }

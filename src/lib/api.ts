@@ -29,6 +29,7 @@ export interface Message {
   timestamp?: string | number;
   sender?: "you" | "peer";
   isCode?: boolean;
+  codeTitle?: string;
 }
 
 export const api = {
