@@ -64,6 +64,10 @@ const Session = () => {
       };
       ws.onmessage = (event) => {
         const message: Message = JSON.parse(event.data);
+        if (message.type === "peer_connected") {
+          // Update pairing status when peer connects
+          setPairing(prev => prev ? { ...prev, status: "connected" } : null);
+        }
         setMessages(prev => [...prev, message]);
         // Handle file messages if needed
       };
@@ -137,7 +141,7 @@ const Session = () => {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6">
           <ConnectionPanel
             pairingCode={pairing.code}
-            status={wsConnectediring.status === "pending" ? "waiting" : "connecting"}
+            status={wsConnected ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
             onDisconnect={() => navigate("/")}
           />
 
