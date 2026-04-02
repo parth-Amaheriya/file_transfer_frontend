@@ -215,33 +215,10 @@ const Session = () => {
 
   const uploadFile = async (file: File) => {
     if (webrtcRef.current) {
-      // Add to files list with initial status
-      const fileId = Math.random().toString(36).substr(2, 9);
-      const fileItem = {
-        id: fileId,
-        name: file.name,
-        size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-        progress: 0,
-        status: "sending" as const,
-        type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.name.endsWith(".zip") || file.name.endsWith(".rar") ? "archive" : "other",
-        direction: "sent" as const,
-      };
-      setFiles(prev => [...prev, fileItem]);
-
       try {
-        await webrtcRef.current.sendFile(file, (progress) => {
-          setFiles(prev => prev.map(f =>
-            f.id === fileId ? { ...f, progress } : f
-          ));
-        });
-        setFiles(prev => prev.map(f =>
-          f.id === fileId ? { ...f, status: "completed" as const } : f
-        ));
+        await webrtcRef.current.sendFile(file);
       } catch (error) {
         console.error("File upload failed:", error);
-        setFiles(prev => prev.map(f =>
-          f.id === fileId ? { ...f, status: "failed" as const } : f
-        ));
       }
     }
   };
