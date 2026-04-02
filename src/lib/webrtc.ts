@@ -93,8 +93,7 @@ export class WebRTCManager {
     if (this.isInitiator) {
       this.dataChannel = this.peerConnection.createDataChannel('data', {
         ordered: true,
-        maxPacketLifeTime: 3000,
-        maxRetransmits: 10, // Increase retransmits for reliability
+        maxRetransmits: 10, // Increase retransmits for reliability (cannot use with maxPacketLifeTime)
         protocol: 'file-transfer'
       });
       this.setupDataChannel();
