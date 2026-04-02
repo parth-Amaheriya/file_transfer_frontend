@@ -145,7 +145,7 @@ const Session = () => {
           setMessages(prev => [...prev, { ...message, sender: "peer" }]);
 
           // Mark tab as unread if message is from peer
-          if (message.sender === undefined || message.sender !== "you") {
+          if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
             let tabToMark = "";
             if (message.type === "text") {
               tabToMark = message.isCode ? "code" : "messages";
@@ -218,6 +218,29 @@ const Session = () => {
       };
     }
   }, [pairing?.status, pairing?.id, deviceId, joinCode]);
+
+  // Watch for new messages from peer and enforce unread state for inactive tabs
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      
+      // Only process messages from peer (not sent by us)
+      if (lastMessage.sender === "peer" || (lastMessage.sender !== "you" && lastMessage.sender !== undefined)) {
+        if (lastMessage.type === "text") {
+          const tabToMark = lastMessage.isCode ? "code" : "messages";
+          
+          // Only mark as unread if we're not currently viewing this tab
+          if (activeTab !== tabToMark) {
+            setUnreadTabs(prev => new Set([...prev, tabToMark]));
+          }
+        } else if (lastMessage.type.includes("file")) {
+          if (activeTab !== "files") {
+            setUnreadTabs(prev => new Set([...prev, "files"]));
+          }
+        }
+      }
+    }
+  }, [messages, activeTab]);
 
   const sendMessage = (content: string) => {
     if (webrtcRef.current) {
