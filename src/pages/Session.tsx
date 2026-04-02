@@ -30,6 +30,8 @@ const Session = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
+  const [activeTab, setActiveTab] = useState<string>("files");
+  const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
   const webrtcRef = useRef<WebRTCManager | null>(null);
 
   const initiateMutation = useMutation({
@@ -141,6 +143,20 @@ const Session = () => {
             setPairing(prev => prev ? { ...prev, status: "connected" } : null);
           }
           setMessages(prev => [...prev, { ...message, sender: "peer" }]);
+
+          // Mark tab as unread if message is from peer
+          if (message.sender === undefined || message.sender !== "you") {
+            let tabToMark = "";
+            if (message.type === "text") {
+              tabToMark = message.isCode ? "code" : "messages";
+            } else if (message.type.includes("file")) {
+              tabToMark = "files";
+            }
+            
+            if (tabToMark) {
+              setUnreadTabs(prev => new Set([...prev, tabToMark]));
+            }
+          }
         },
         (state) => {
           console.log('WebRTC connection state changed:', state);
@@ -177,6 +193,12 @@ const Session = () => {
                   : 'other',
                 direction: progress.status === 'receiving' ? 'received' : 'sent'
               };
+              
+              // Mark files tab as unread if receiving
+              if (progress.status === 'receiving') {
+                setUnreadTabs(prev => new Set([...prev, 'files']));
+              }
+              
               return [...prev, newFile];
             }
             
@@ -289,19 +311,35 @@ const Session = () => {
           />
 
           <div className="surface-elevated rounded-xl p-6">
-            <Tabs defaultValue="files">
+            <Tabs value={activeTab} onValueChange={(value) => {
+              setActiveTab(value);
+              setUnreadTabs(prev => {
+                const updated = new Set(prev);
+                updated.delete(value);
+                return updated;
+              });
+            }}>
               <TabsList className="bg-secondary mb-6">
-                <TabsTrigger value="files" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                <TabsTrigger value="files" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <FileText className="h-3.5 w-3.5" />
                   Files
+                  {unreadTabs.has("files") && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                  )}
                 </TabsTrigger>
-                <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <MessageSquare className="h-3.5 w-3.5" />
                   Messages
+                  {unreadTabs.has("messages") && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                  )}
                 </TabsTrigger>
-                <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <Code className="h-3.5 w-3.5" />
                   Code
+                  {unreadTabs.has("code") && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                  )}
                 </TabsTrigger>
               </TabsList>
 
