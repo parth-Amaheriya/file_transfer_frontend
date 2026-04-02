@@ -147,16 +147,41 @@ const Session = () => {
           setConnectionState(state);
         },
         (progress) => {
-          setFiles(prev => prev.map(f =>
-            f.id === progress.id
-              ? {
-                  ...f,
-                  progress: progress.progress,
-                  status: progress.status,
-                  direction: progress.status === 'receiving' ? 'received' : 'sent'
-                }
-              : f
-          ));
+          console.log('File progress update:', progress);
+          setFiles(prev => {
+            const existingIndex = prev.findIndex(f => f.id === progress.id);
+            
+            if (existingIndex >= 0) {
+              // Update existing file
+              const updated = [...prev];
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                progress: progress.progress,
+                status: progress.status as any,
+                direction: progress.status === 'receiving' ? 'received' : 'sent'
+              };
+              return updated;
+            } else if (progress.status === 'receiving' || progress.status === 'sending') {
+              // Add new file if it's being received or sent
+              const newFile: FileItem = {
+                id: progress.id,
+                name: progress.name,
+                size: `${(progress.size / 1024 / 1024).toFixed(1)} MB`,
+                progress: progress.progress,
+                status: progress.status as any,
+                type: progress.name.includes('.') 
+                  ? progress.name.endsWith('.jpg') || progress.name.endsWith('.png') || progress.name.endsWith('.gif') ? 'image'
+                  : progress.name.endsWith('.mp4') || progress.name.endsWith('.avi') ? 'video'
+                  : progress.name.endsWith('.zip') || progress.name.endsWith('.rar') ? 'archive'
+                  : 'other'
+                  : 'other',
+                direction: progress.status === 'receiving' ? 'received' : 'sent'
+              };
+              return [...prev, newFile];
+            }
+            
+            return prev;
+          });
         }
       );
 
