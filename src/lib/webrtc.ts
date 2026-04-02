@@ -18,7 +18,7 @@ export class WebRTCManager {
   private pairingId: string;
   private deviceId: string;
   private isInitiator: boolean;
-  private onMessage: (message: WebRTCMessage) => void;
+  private onMessage: (message: Message) => void;
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   private onFileProgress: (progress: FileTransferProgress) => void;
   private signalingInterval: number | null = null;
@@ -371,7 +371,7 @@ export class WebRTCManager {
     return messages;
   }
 
-  async sendMessage(message: WebRTCMessage): Promise<void> {
+  async sendMessage(message: Message): Promise<void> {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
       await this.waitForBufferSpace();
       this.dataChannel.send(JSON.stringify(message));
