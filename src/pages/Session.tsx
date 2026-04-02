@@ -234,6 +234,28 @@ const Session = () => {
     console.log("Download not needed - files are received automatically");
   };
 
+  const handleDisconnect = () => {
+    // Close WebRTC connection
+    if (webrtcRef.current) {
+      webrtcRef.current.close();
+      webrtcRef.current = null;
+    }
+
+    // Clear all cache and state
+    sessionStorage.removeItem("pairing");
+    sessionStorage.removeItem("deviceId");
+    localStorage.clear(); // Clear any persistent cache
+    
+    // Reset state
+    setPairing(null);
+    setMessages([]);
+    setFiles([]);
+    setConnectionState("new");
+
+    // Navigate back to home
+    navigate("/");
+  };
+
   if (!pairing) {
     return <div>Loading...</div>;
   }
@@ -245,7 +267,7 @@ const Session = () => {
       <header className="border-b border-border bg-card sticky top-0 z-10">
         <div className="container max-w-6xl flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+            <Button variant="ghost" size="icon" onClick={handleDisconnect}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-bold tracking-tight text-foreground">Nexdrop</span>
@@ -263,11 +285,7 @@ const Session = () => {
               connectionState === "failed" ? "failed" :
               pairing.status === "pending" ? "waiting" : "connecting"
             }
-            onDisconnect={() => {
-              sessionStorage.removeItem("pairing");
-              sessionStorage.removeItem("deviceId");
-              navigate("/");
-            }}
+            onDisconnect={handleDisconnect}
           />
 
           <div className="surface-elevated rounded-xl p-6">
