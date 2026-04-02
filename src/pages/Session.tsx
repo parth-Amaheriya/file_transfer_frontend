@@ -324,21 +324,21 @@ const Session = () => {
                   <FileText className="h-3.5 w-3.5" />
                   Files
                   {unreadTabs.has("files") && (
-                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <MessageSquare className="h-3.5 w-3.5" />
                   Message
                   {unreadTabs.has("messages") && (
-                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <Code className="h-3.5 w-3.5" />
                   Code
                   {unreadTabs.has("code") && (
-                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
+                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
               </TabsList>

@@ -65,4 +65,35 @@
   .surface-elevated {
     @apply bg-card border border-border shadow-sm;
   }
+
+  /* Apple-inspired notification indicator animations */
+  @keyframes notificationPulse {
+    0% {
+      transform: scale(0.9) translateZ(0);
+      opacity: 0;
+    }
+    70% {
+      transform: scale(1.08) translateZ(0);
+    }
+    100% {
+      transform: scale(1) translateZ(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes notificationBreath {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+    }
+  }
+
+  .notification-badge {
+    @apply inline-flex items-center justify-center rounded-full transition-all transform;
+    animation: notificationPulse 0.5s cubic-bezier(0.23, 1, 0.320, 1) forwards,
+              notificationBreath 3s ease-in-out 0.6s infinite;
+    will-change: transform, box-shadow, opacity;
+  }
 }
