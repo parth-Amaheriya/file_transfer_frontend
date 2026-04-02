@@ -32,6 +32,11 @@ export interface Message {
   codeTitle?: string;
 }
 
+export interface SignalingMessage {
+  type: "offer" | "answer" | "ice_candidate";
+  data: any;
+}
+
 export const api = {
   async initiatePairing(device: DeviceDescriptor): Promise<PairingCodeOut> {
     const response = await fetch(`${API_BASE}/api/pairing/initiate`, {
@@ -60,6 +65,23 @@ export const api = {
   async getPairing(code: string): Promise<PairingCodeOut> {
     const response = await fetch(`${API_BASE}/api/pairing/${code}`);
     if (!response.ok) throw new Error("Failed to get pairing");
+    return response.json();
+  },
+
+  async sendSignalingMessage(pairingId: string, message: SignalingMessage): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/signaling`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(message),
+    });
+    if (!response.ok) throw new Error("Failed to send signaling message");
+  },
+
+  async getSignalingMessages(pairingId: string): Promise<SignalingMessage[]> {
+    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/signaling`);
+    if (!response.ok) throw new Error("Failed to get signaling messages");
     return response.json();
   },
 

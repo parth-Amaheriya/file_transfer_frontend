@@ -4,14 +4,15 @@ import { useState } from "react";
 
 interface ConnectionPanelProps {
   pairingCode: string;
-  status: "waiting" | "connecting" | "connected";
+  status: "waiting" | "connecting" | "connected" | "failed";
   onDisconnect: () => void;
 }
 
 const statusConfig = {
   waiting: { label: "Waiting for peer", color: "bg-muted-foreground", icon: WifiOff },
   connecting: { label: "Connecting...", color: "bg-amber-500", icon: Loader2 },
-  connected: { label: "Connected", color: "bg-accent", icon: Wifi },
+  connected: { label: "Direct P2P Connected", color: "bg-accent", icon: Wifi },
+  failed: { label: "Connection Failed", color: "bg-destructive", icon: WifiOff },
 };
 
 const ConnectionPanel = ({ pairingCode, status, onDisconnect }: ConnectionPanelProps) => {

@@ -11,6 +11,7 @@ import MessagingPanel from "@/components/MessagingPanel";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import { type FileItem } from "@/components/FileTransferPanel";
 import { api, type PairingCodeOut, type Message } from "@/lib/api";
+import { WebRTCManager, type FileTransferProgress } from "@/lib/webrtc";
 
 const Session = () => {
   const navigate = useNavigate();
@@ -28,8 +29,8 @@ const Session = () => {
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
+  const webrtcRef = useRef<WebRTCManager | null>(null);
 
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
@@ -111,92 +112,96 @@ const Session = () => {
   }, [pairing, joinCode]);
 
   useEffect(() => {
-    if (pairing?.status === "connected" && !wsRef.current) {
-      const ws = api.createWebSocket(pairing.id, deviceId);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log("WebSocket connected");
-        setWsConnected(true);
-      };
-      ws.onmessage = (event) => {
-        const message: Message = JSON.parse(event.data);
-        if (message.type === "peer_connected") {
-          // Update pairing status when peer connects
-          setPairing(prev => prev ? { ...prev, status: "connected" } : null);
-        } else if (message.type === "file_shared") {
-          // Handle received file notification
-          const fileItem = {
-            id: `received-${Date.now()}`,
-            name: message.filename!,
-            size: `${(message.file_size! / 1024 / 1024).toFixed(1)} MB`,
-            progress: 100,
-            status: "completed" as const,
-            type: message.mime_type?.startsWith("image/") ? "image" : 
-                  message.mime_type?.startsWith("video/") ? "video" : 
-                  message.filename?.endsWith(".zip") || message.filename?.endsWith(".rar") ? "archive" : "other",
-            direction: "received" as const,
-          };
-          setFiles(prev => [...prev, fileItem]);
+    if (pairing?.status === "connected" && !webrtcRef.current) {
+      const isInitiator = !joinCode; // The device that initiated is the offerer
+      const webrtc = new WebRTCManager(
+        import.meta.env.VITE_API_BASE || "http://localhost:8000",
+        pairing.id,
+        deviceId,
+        isInitiator,
+        (message) => {
+          if (message.type === "peer_connected") {
+            setPairing(prev => prev ? { ...prev, status: "connected" } : null);
+          }
+          setMessages(prev => [...prev, { ...message, sender: "peer" }]);
+        },
+        (state) => {
+          setConnectionState(state);
+        },
+        (progress) => {
+          setFiles(prev => prev.map(f =>
+            f.id === progress.id
+              ? {
+                  ...f,
+                  progress: progress.progress,
+                  status: progress.status,
+                  direction: progress.status === 'receiving' ? 'received' : 'sent'
+                }
+              : f
+          ));
         }
-        setMessages(prev => [...prev, { ...message, sender: "peer" }]);
-        // Handle file messages if needed
-      };
-      ws.onclose = () => {
-        console.log("WebSocket closed");
-        setWsConnected(false);
-        wsRef.current = null; // Allow reconnection if needed
-      };
-      ws.onerror = () => {
-        console.log("WebSocket error");
-        setWsConnected(false);
-        wsRef.current = null; // Allow reconnection if needed
-      };
+      );
+
+      webrtcRef.current = webrtc;
+      webrtc.initialize().catch(console.error);
 
       return () => {
-        if (wsRef.current) {
-          wsRef.current.close();
-          wsRef.current = null;
+        if (webrtcRef.current) {
+          webrtcRef.current.close();
+          webrtcRef.current = null;
         }
       };
     }
-  }, [pairing?.status, pairing?.id, deviceId]);
+  }, [pairing?.status, pairing?.id, deviceId, joinCode]);
 
   const sendMessage = (content: string) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (webrtcRef.current) {
       const message: Message = { type: "text", content, sender: "you" };
-      wsRef.current.send(JSON.stringify(message));
-      setMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
+      webrtcRef.current.sendMessage(message);
+      setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
     }
   };
 
   const sendCode = (code: string, title: string) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (webrtcRef.current) {
       const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
-      wsRef.current.send(JSON.stringify(message));
-      setMessages(prev => [...prev, { ...message, timestamp: new Date().toISOString() }]);
+      webrtcRef.current.sendMessage(message);
+      setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
     }
   };
 
   const uploadFile = async (file: File) => {
-    if (pairing) {
+    if (webrtcRef.current) {
       // Add to files list with initial status
-      const fileId = Date.now().toString();
+      const fileId = crypto.randomUUID();
       const fileItem = {
         id: fileId,
         name: file.name,
         size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
         progress: 0,
-        status: "uploading" as const,
+        status: "sending" as const,
         type: file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.name.endsWith(".zip") || file.name.endsWith(".rar") ? "archive" : "other",
         direction: "sent" as const,
       };
       setFiles(prev => [...prev, fileItem]);
 
       try {
-        await api.uploadFile(pairing.id, file, deviceId, (progress) => {
-          // Update progress
-          setFiles(prev => prev.map(f => 
+        await webrtcRef.current.sendFile(file, (progress) => {
+          setFiles(prev => prev.map(f =>
+            f.id === fileId ? { ...f, progress } : f
+          ));
+        });
+        setFiles(prev => prev.map(f =>
+          f.id === fileId ? { ...f, status: "completed" as const } : f
+        ));
+      } catch (error) {
+        console.error("File upload failed:", error);
+        setFiles(prev => prev.map(f =>
+          f.id === fileId ? { ...f, status: "failed" as const } : f
+        ));
+      }
+    }
+  }; 
             f.id === fileId ? { ...f, progress: Math.round(progress) } : f
           ));
         });
@@ -220,21 +225,8 @@ const Session = () => {
   };
 
   const downloadFile = async (filename: string) => {
-    if (pairing) {
-      try {
-        const blob = await api.downloadFile(pairing.id, filename);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error("Download failed", error);
-      }
-    }
+    // Files are now downloaded automatically when received via WebRTC
+    console.log("Download not needed - files are received automatically");
   };
 
   if (!pairing) {
@@ -261,7 +253,11 @@ const Session = () => {
         <div className="grid lg:grid-cols-[300px_1fr] gap-6">
           <ConnectionPanel
             pairingCode={pairing.code}
-            status={wsConnected ? "connected" : pairing.status === "pending" ? "waiting" : "connecting"}
+            status={
+              connectionState === "connected" ? "connected" :
+              connectionState === "failed" ? "failed" :
+              pairing.status === "pending" ? "waiting" : "connecting"
+            }
             onDisconnect={() => {
               sessionStorage.removeItem("pairing");
               sessionStorage.removeItem("deviceId");
