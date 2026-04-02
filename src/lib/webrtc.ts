@@ -40,6 +40,7 @@ export class WebRTCManager {
   private connectionTimeout: number | null = null;
   private pendingIceCandidates: RTCIceCandidate[] = []; // Buffer ICE candidates until remote description is set
   private receivedFiles: Map<string, ReceivedFileData> = new Map();
+  private activeTransfers: Map<string, { cancelled: boolean; fileId?: string }> = new Map(); // Track active file transfers for cancellation
 
   constructor(
     signalingServer: string,
@@ -543,6 +544,17 @@ export class WebRTCManager {
     this.dataChannel.send(JSON.stringify(message));
   }
 
+  cancelFileTransfer(fileId: string): void {
+    console.log(`Cancelling file transfer: ${fileId}`);
+    for (const [key, transfer] of this.activeTransfers.entries()) {
+      if (transfer.fileId === fileId) {
+        transfer.cancelled = true;
+        console.log(`Marked transfer ${key} as cancelled`);
+        break;
+      }
+    }
+  }
+
   private async waitForDataChannelOpen(): Promise<void> {
     return new Promise((resolve, reject) => {
       const maxWaitTime = 10000; // 10 seconds max
@@ -570,118 +582,146 @@ export class WebRTCManager {
     console.log(`Starting file transfer: ${file.name} (${file.size} bytes)`);
 
     const fileId = Math.random().toString(36).substr(2, 9);
-    // Dynamic chunk size: smaller for small files, larger for big files
-    const chunkSize = file.size < 1024 * 1024 ? 16 * 1024 : // 16KB for files < 1MB
-                      file.size < 100 * 1024 * 1024 ? 64 * 1024 : // 64KB for files < 100MB
-                      128 * 1024; // 128KB for larger files
-    const totalChunks = Math.ceil(file.size / chunkSize);
+    const transferKey = `transfer-${fileId}`;
+    
+    // Track this transfer for cancellation
+    this.activeTransfers.set(transferKey, { cancelled: false, fileId });
 
-    console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
+    try {
+      // Dynamic chunk size: smaller for small files, larger for big files
+      const chunkSize = file.size < 1024 * 1024 ? 16 * 1024 : // 16KB for files < 1MB
+                        file.size < 100 * 1024 * 1024 ? 64 * 1024 : // 64KB for files < 100MB
+                        128 * 1024; // 128KB for larger files
+      const totalChunks = Math.ceil(file.size / chunkSize);
 
-    // Update progress to sending
-    this.onFileProgress({
-      id: fileId,
-      name: file.name,
-      size: file.size,
-      progress: 0,
-      status: 'sending'
-    });
+      console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
 
-    // Send file start message (JSON)
-    const startMessage: Message = {
-      type: 'file_init',
-      filename: file.name,
-      file_size: file.size,
-      mime_type: file.type,
-      timestamp: Date.now()
-    };
-
-    await this.sendMessage(startMessage);
-
-    let sentChunks = 0;
-    const startTime = Date.now();
-
-    // Send file in chunks (binary)
-    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      const start = chunkIndex * chunkSize;
-      const end = Math.min(start + chunkSize, file.size);
-      const chunk = file.slice(start, end);
-
-      const arrayBuffer = await chunk.arrayBuffer();
-
-      // Create binary message: [type(1), chunkIndex(4), data]
-      const messageSize = 1 + 4 + arrayBuffer.byteLength;
-      const messageBuffer = new ArrayBuffer(messageSize);
-      const view = new DataView(messageBuffer);
-
-      view.setUint8(0, 2); // Message type: file chunk (binary)
-      view.setUint32(1, chunkIndex, true); // Chunk index
-
-      // Copy chunk data
-      const uint8Array = new Uint8Array(messageBuffer, 5);
-      uint8Array.set(new Uint8Array(arrayBuffer));
-
-      // Wait for buffer to have space before sending
-      try {
-        await this.waitForBufferSpace();
-      } catch (error) {
-        console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
-        throw new Error(`Buffer management failed: ${error}`);
-      }
-
-      // Check if data channel is still open
-      if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-        throw new Error('Data channel closed during file transfer');
-      }
-
-      try {
-        this.dataChannel.send(messageBuffer);
-      } catch (error) {
-        console.error(`Failed to send chunk ${chunkIndex}:`, error);
-        throw new Error(`Failed to send data: ${error}`);
-      }
-      sentChunks++;
-
-      const progress = (sentChunks / totalChunks) * 100;
-      if (onProgress) onProgress(progress);
-
+      // Update progress to sending
       this.onFileProgress({
         id: fileId,
         name: file.name,
         size: file.size,
-        progress,
+        progress: 0,
         status: 'sending'
       });
 
-      // Log progress for large files
-      if (sentChunks % 100 === 0 || sentChunks === totalChunks) {
-        const elapsed = Date.now() - startTime;
-        const speed = (sentChunks * chunkSize) / (elapsed / 1000) / (1024 * 1024); // MB/s
-        console.log(`Sent ${sentChunks}/${totalChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+      // Send file start message (JSON)
+      const startMessage: Message = {
+        type: 'file_init',
+        filename: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        timestamp: Date.now()
+      };
+
+      await this.sendMessage(startMessage);
+
+      let sentChunks = 0;
+      const startTime = Date.now();
+
+      // Send file in chunks (binary)
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        // Check if transfer was cancelled
+        const transfer = this.activeTransfers.get(transferKey);
+        if (transfer?.cancelled) {
+          console.log(`File transfer cancelled: ${file.name}`);
+          this.onFileProgress({
+            id: fileId,
+            name: file.name,
+            size: file.size,
+            progress: (sentChunks / totalChunks) * 100,
+            status: 'failed'
+          });
+          this.activeTransfers.delete(transferKey);
+          throw new Error('File transfer cancelled by user');
+        }
+
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+
+        const arrayBuffer = await chunk.arrayBuffer();
+
+        // Create binary message: [type(1), chunkIndex(4), data]
+        const messageSize = 1 + 4 + arrayBuffer.byteLength;
+        const messageBuffer = new ArrayBuffer(messageSize);
+        const view = new DataView(messageBuffer);
+
+        view.setUint8(0, 2); // Message type: file chunk (binary)
+        view.setUint32(1, chunkIndex, true); // Chunk index
+
+        // Copy chunk data
+        const uint8Array = new Uint8Array(messageBuffer, 5);
+        uint8Array.set(new Uint8Array(arrayBuffer));
+
+        // Wait for buffer to have space before sending
+        try {
+          await this.waitForBufferSpace();
+        } catch (error) {
+          console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
+          this.activeTransfers.delete(transferKey);
+          throw new Error(`Buffer management failed: ${error}`);
+        }
+
+        // Check if data channel is still open
+        if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+          this.activeTransfers.delete(transferKey);
+          throw new Error('Data channel closed during file transfer');
+        }
+
+        try {
+          this.dataChannel.send(messageBuffer);
+        } catch (error) {
+          console.error(`Failed to send chunk ${chunkIndex}:`, error);
+          this.activeTransfers.delete(transferKey);
+          throw new Error(`Failed to send data: ${error}`);
+        }
+        sentChunks++;
+
+        const progress = (sentChunks / totalChunks) * 100;
+        if (onProgress) onProgress(progress);
+
+        this.onFileProgress({
+          id: fileId,
+          name: file.name,
+          size: file.size,
+          progress,
+          status: 'sending'
+        });
+
+        // Log progress for large files
+        if (sentChunks % 100 === 0 || sentChunks === totalChunks) {
+          const elapsed = Date.now() - startTime;
+          const speed = (sentChunks * chunkSize) / (elapsed / 1000) / (1024 * 1024); // MB/s
+          console.log(`Sent ${sentChunks}/${totalChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+        }
       }
+
+      // Send file end message (JSON)
+      const endMessage: Message = {
+        type: 'file_end',
+        filename: file.name,
+        timestamp: Date.now()
+      };
+
+      await this.sendMessage(endMessage);
+
+      const totalTime = Date.now() - startTime;
+      const avgSpeed = file.size / (totalTime / 1000) / (1024 * 1024); // MB/s
+      console.log(`File transfer completed: ${file.name} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
+
+      // Update progress to completed
+      this.onFileProgress({
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        progress: 100,
+        status: 'completed'
+      });
+    } finally {
+      // Clean up the transfer record
+      this.activeTransfers.delete(transferKey);
     }
-
-    // Send file end message (JSON)
-    const endMessage: Message = {
-      type: 'file_end',
-      filename: file.name,
-      timestamp: Date.now()
-    };
-
-    await this.sendMessage(endMessage);
-
-    const totalTime = Date.now() - startTime;
-    const avgSpeed = file.size / (totalTime / 1000) / (1024 * 1024); // MB/s
-    console.log(`File transfer completed: ${file.name} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
-
-    // Update progress to completed
-    this.onFileProgress({
-      id: fileId,
-      name: file.name,
-      size: file.size,
-      progress: 100,
-      status: 'completed'
-    });
   }
 
   private async waitForBufferSpace(): Promise<void> {

@@ -223,6 +223,12 @@ const Session = () => {
     }
   };
 
+  const cancelFileTransfer = (fileId: string) => {
+    if (webrtcRef.current) {
+      webrtcRef.current.cancelFileTransfer(fileId);
+    }
+  };
+
   const downloadFile = async (filename: string) => {
     // Files are now downloaded automatically when received via WebRTC
     console.log("Download not needed - files are received automatically");
@@ -282,7 +288,7 @@ const Session = () => {
               </TabsList>
 
               <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} onFileDownload={downloadFile} files={files} />
+                <FileTransferPanel onFileUpload={uploadFile} onFileDownload={downloadFile} onCancelTransfer={cancelFileTransfer} files={files} />
               </TabsContent>
 
               <TabsContent value="messages">

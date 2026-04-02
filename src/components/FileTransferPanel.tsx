@@ -1,4 +1,4 @@
-import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown, Download } from "lucide-react";
+import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown, Download, X } from "lucide-react";
 import { useState, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,11 @@ const typeIcons = {
 interface FileTransferPanelProps {
   onFileUpload: (file: File) => void;
   onFileDownload?: (filename: string) => void;
+  onCancelTransfer?: (fileId: string) => void;
   files: FileItem[];
 }
 
-const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransferPanelProps) => {
+const FileTransferPanel = ({ onFileUpload, onFileDownload, onCancelTransfer, files }: FileTransferPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +72,7 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransfer
       <div className="space-y-2">
         {files.map((file) => {
           const Icon = typeIcons[file.type];
+          const isTransferring = file.status === 'sending' || file.status === 'uploading' || file.status === 'receiving';
           return (
             <div key={file.id} className="surface rounded-lg p-4 flex items-center gap-4 animate-fade-in">
               <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center shrink-0">
@@ -87,6 +89,17 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, files }: FileTransfer
                 {file.status === "uploading" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "sending" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "receiving" && <ArrowDown className="h-4 w-4 text-primary" />}
+                {isTransferring && onCancelTransfer && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => onCancelTransfer(file.id)}
+                    className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                    title="Cancel transfer"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
                 {file.status === "completed" && file.direction === "received" && onFileDownload && (
                   <Button 
                     variant="ghost" 
