@@ -213,15 +213,15 @@ export class WebRTCManager {
         const message: Message = JSON.parse(data);
 
         if (message.type === 'file_init' && message.filename && message.file_size) {
-          // Start receiving file
-          const fileId = Math.random().toString(36).substr(2, 9);
+          // Start receiving file - use fileId from sender if available, otherwise generate one
+          const fileId = message.file_id || Math.random().toString(36).substr(2, 9);
           // Use same chunk size calculation as sender
           const chunkSize = message.file_size < 1024 * 1024 ? 16 * 1024 :
                            message.file_size < 100 * 1024 * 1024 ? 64 * 1024 :
                            128 * 1024;
           const expectedChunks = Math.ceil(message.file_size / chunkSize);
 
-          console.log(`Starting to receive file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}`);
+          console.log(`Starting to receive file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}, fileId: ${fileId}`);
 
           // Decide which mode to use: streaming for files >100MB when available, memory buffer otherwise
           let mode: 'memory' | 'streaming' = 'memory';
@@ -252,7 +252,8 @@ export class WebRTCManager {
             cancelled: false
           };
 
-          this.receivedFiles.set(message.filename, receivedFileData);
+          // Store by fileId instead of filename for multiple file support
+          this.receivedFiles.set(fileId, receivedFileData);
           // Track fileId -> filename for cancellation
           this.receivingFilesByFileId.set(fileId, message.filename);
 
@@ -267,9 +268,20 @@ export class WebRTCManager {
           console.log(`File reception mode: ${mode} (${message.file_size} bytes)`);
 
         } else if (message.type === 'file_end' && message.filename) {
-          // File transfer complete
-          const fileData = this.receivedFiles.get(message.filename);
-          if (fileData && !fileData.cancelled) {
+          // Find the file by filename and mark it complete
+          let fileData: ReceivedFileData | undefined;
+          let fileIdToUse: string | undefined;
+          
+          // Search through receivedFiles to find the matching file
+          for (const [fId, fData] of this.receivedFiles.entries()) {
+            if (this.receivingFilesByFileId.get(fId) === message.filename) {
+              fileData = fData;
+              fileIdToUse = fId;
+              break;
+            }
+          }
+
+          if (fileData && !fileData.cancelled && fileIdToUse) {
             const totalTime = Date.now() - fileData.startTime;
             const avgSpeed = fileData.totalSize / (totalTime / 1000) / (1024 * 1024); // MB/s
             console.log(`File reception completed: ${message.filename} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
@@ -322,14 +334,9 @@ export class WebRTCManager {
               }
             }
 
-            this.receivedFiles.delete(message.filename);
+            this.receivedFiles.delete(fileIdToUse);
             // Clean up fileId mapping
-            for (const [fileId, name] of this.receivingFilesByFileId.entries()) {
-              if (name === message.filename) {
-                this.receivingFilesByFileId.delete(fileId);
-                break;
-              }
-            }
+            this.receivingFilesByFileId.delete(fileIdToUse);
           }
 
         } else if (message.type === 'file_cancel' && message.filename) {
@@ -406,16 +413,20 @@ export class WebRTCManager {
 
         if (messageType === 2) { // Binary file chunk
           const chunkIndex = view.getUint32(1, true);
-          const chunkData = data.slice(5); // Skip header
+          const fileIdLength = view.getUint8(5);
+          const fileIdBytes = new Uint8Array(data, 6, fileIdLength);
+          const fileId = new TextDecoder().decode(fileIdBytes);
+          const chunkData = data.slice(6 + fileIdLength); // Skip header and fileId
 
-          // Find the file being received (assuming one at a time for simplicity)
-          const fileEntries = Array.from(this.receivedFiles.entries());
-          if (fileEntries.length > 0) {
-            const [filename, fileData] = fileEntries[0];
-            
+          console.log(`Received chunk ${chunkIndex} for file ${fileId}`);
+
+          // Find the file being received by fileId - this allows multiple files
+          const fileData = this.receivedFiles.get(fileId);
+          
+          if (fileData) {
             // Skip if file was cancelled by remote side
             if (fileData.cancelled) {
-              console.log(`Skipping chunk for cancelled file: ${filename}`);
+              console.log(`Skipping chunk for cancelled file: ${fileId}`);
               return;
             }
 
@@ -444,7 +455,7 @@ export class WebRTCManager {
 
                 this.onFileProgress({
                   id: fileData.fileId,
-                  name: filename,
+                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
                   size: fileData.totalSize,
                   progress,
                   status: 'receiving'
@@ -453,7 +464,7 @@ export class WebRTCManager {
                 console.error('Error writing chunk to file:', error);
                 this.onFileProgress({
                   id: fileData.fileId,
-                  name: filename,
+                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
                   size: fileData.totalSize,
                   progress: 0,
                   status: 'failed'
@@ -476,13 +487,15 @@ export class WebRTCManager {
 
                 this.onFileProgress({
                   id: fileData.fileId,
-                  name: filename,
+                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
                   size: fileData.totalSize,
                   progress,
                   status: 'receiving'
                 });
               }
             }
+          } else {
+            console.warn(`Received chunk for unknown file ${fileId}`);
           }
         }
       }
@@ -759,13 +772,14 @@ export class WebRTCManager {
         status: 'sending'
       });
 
-      // Send file start message (JSON)
+      // Send file start message (JSON) - include fileId so receiver can track it
       const startMessage: Message = {
         type: 'file_init',
         filename: file.name,
         file_size: file.size,
         mime_type: file.type,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        file_id: fileId // Add fileId to message so receiver can track by it
       };
 
       await this.sendMessage(startMessage);
@@ -795,16 +809,22 @@ export class WebRTCManager {
 
         const arrayBuffer = await chunk.arrayBuffer();
 
-        // Create binary message: [type(1), chunkIndex(4), data]
-        const messageSize = 1 + 4 + arrayBuffer.byteLength;
+        // Create binary message: [type(1), chunkIndex(4), fileIdLength(1), fileId(var), data]
+        const fileIdBytes = new TextEncoder().encode(fileId);
+        const messageSize = 1 + 4 + 1 + fileIdBytes.length + arrayBuffer.byteLength;
         const messageBuffer = new ArrayBuffer(messageSize);
         const view = new DataView(messageBuffer);
 
         view.setUint8(0, 2); // Message type: file chunk (binary)
         view.setUint32(1, chunkIndex, true); // Chunk index
+        view.setUint8(5, fileIdBytes.length); // FileId length
+
+        // Copy fileId
+        const fileIdArray = new Uint8Array(messageBuffer, 6, fileIdBytes.length);
+        fileIdArray.set(fileIdBytes);
 
         // Copy chunk data
-        const uint8Array = new Uint8Array(messageBuffer, 5);
+        const uint8Array = new Uint8Array(messageBuffer, 6 + fileIdBytes.length);
         uint8Array.set(new Uint8Array(arrayBuffer));
 
         // Wait for buffer to have space before sending

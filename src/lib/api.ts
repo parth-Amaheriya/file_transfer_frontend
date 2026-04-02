@@ -23,6 +23,7 @@ export interface Message {
   file_name?: string;
   filename?: string;
   file_size?: number;
+  file_id?: string;
   chunk_data?: string;
   chunk_size?: number;
   mime_type?: string;
