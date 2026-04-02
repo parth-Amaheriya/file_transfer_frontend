@@ -33,6 +33,7 @@ const Session = () => {
   const [activeTab, setActiveTab] = useState<string>("files");
   const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
   const webrtcRef = useRef<WebRTCManager | null>(null);
+  const websocketRef = useRef<WebSocket | null>(null);
   const lastProcessedMessageIndexRef = useRef<number>(-1);
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
 
@@ -153,7 +154,14 @@ const Session = () => {
   }, [pairing?.code, pairing?.status]);
 
   useEffect(() => {
-    if ((pairing?.status === "connected" || pairing?.status === "active") && !webrtcRef.current) {
+    // Only initialize WebRTC for 1-to-1 connections (exactly 1 peer)
+    // For multiple devices, use WebSocket for communication
+    const peerCount = pairing?.peer_count || 0;
+    const shouldUseWebRTC = (pairing?.status === "connected" || pairing?.status === "active") && 
+                           peerCount === 1 && 
+                           !webrtcRef.current;
+    
+    if (shouldUseWebRTC) {
       const isInitiator = !joinCode; // The device that initiated is the offerer
       console.log(`Initializing WebRTC for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const webrtc = new WebRTCManager(
@@ -241,8 +249,91 @@ const Session = () => {
           webrtcRef.current = null;
         }
       };
+    } else if ((pairing?.status === "active") && (pairing?.peer_count || 0) > 1 && !websocketRef.current) {
+      // For multiple devices, establish WebSocket connection for messaging
+      console.log(`Initializing WebSocket for multi-device messaging, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
+      const ws = api.createWebSocket(pairing.id, deviceId);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected for multi-device messaging');
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('WebSocket message received:', data);
+          
+          if (data.type === 'text') {
+            const message: Message = {
+              type: "text",
+              content: data.content,
+              sender: "peer",
+              timestamp: Date.now()
+            };
+            setMessages(prev => [...prev, message]);
+          } else if (data.type === 'snippet') {
+            const message: Message = {
+              type: "text",
+              content: data.content,
+              sender: "peer",
+              isCode: true,
+              codeTitle: data.codeTitle,
+              timestamp: Date.now()
+            };
+            setMessages(prev => [...prev, message]);
+          } else if (data.type === 'file_shared') {
+            // Handle file shared via HTTP upload
+            const message: Message = {
+              type: "file_shared",
+              filename: data.filename,
+              file_size: data.file_size,
+              sender: "peer",
+              timestamp: Date.now()
+            };
+            setMessages(prev => [...prev, message]);
+            
+            // Add to files list for download
+            const fileItem: FileItem = {
+              id: `shared_${Date.now()}`,
+              name: data.filename,
+              size: `${(data.file_size / 1024 / 1024).toFixed(1)} MB`,
+              progress: 100,
+              status: 'completed',
+              type: data.filename.includes('.') 
+                ? data.filename.split('.').pop()?.toLowerCase() === 'jpg' || data.filename.split('.').pop()?.toLowerCase() === 'png' ? 'image'
+                : data.filename.split('.').pop()?.toLowerCase() === 'mp4' ? 'video'
+                : data.filename.split('.').pop()?.toLowerCase() === 'zip' ? 'archive'
+                : 'other'
+                : 'other',
+              direction: 'received',
+              shared: true // Mark as shared file
+            };
+            setFiles(prev => [...prev, fileItem]);
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket closed');
+        websocketRef.current = null;
+      };
+      
+      websocketRef.current = ws;
+      
+      return () => {
+        if (websocketRef.current) {
+          websocketRef.current.close();
+          websocketRef.current = null;
+        }
+      };
     }
-  }, [pairing?.status, pairing?.id, deviceId, joinCode]);
+  }, [pairing?.status, pairing?.id, pairing?.peer_count, deviceId, joinCode]);
 
   // Watch for new messages from peer and mark tabs as unread
   useEffect(() => {
@@ -278,6 +369,12 @@ const Session = () => {
       const message: Message = { type: "text", content, sender: "you" };
       webrtcRef.current.sendMessage(message);
       setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
+    } else if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+      // Send via WebSocket for multi-device scenarios
+      const wsMessage = { type: "text", content };
+      websocketRef.current.send(JSON.stringify(wsMessage));
+      const message: Message = { type: "text", content, sender: "you", timestamp: Date.now() };
+      setMessages(prev => [...prev, message]);
     }
   };
 
@@ -286,13 +383,50 @@ const Session = () => {
       const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
       webrtcRef.current.sendMessage(message);
       setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
+    } else if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+      // Send via WebSocket for multi-device scenarios
+      const wsMessage = { type: "snippet", content: code, codeTitle: title };
+      websocketRef.current.send(JSON.stringify(wsMessage));
+      const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title, timestamp: Date.now() };
+      setMessages(prev => [...prev, message]);
     }
   };
 
   const uploadFile = async (file: File) => {
     if (webrtcRef.current) {
+      // Use WebRTC for 1-to-1 file transfer
       try {
         await webrtcRef.current.sendFile(file);
+      } catch (error) {
+        console.error("File upload failed:", error);
+      }
+    } else if (pairing && (pairing.peer_count || 0) > 1) {
+      // Use HTTP upload for multi-device file sharing
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(`${(import.meta as any).env?.VITE_API_BASE || "http://localhost:8000"}/api/pairing/${pairing.id}/files`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'device-id': deviceId
+          }
+        });
+        
+        if (response.ok) {
+          console.log('File uploaded successfully for multi-device sharing');
+          // Notify other devices via WebSocket
+          if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+            websocketRef.current.send(JSON.stringify({
+              type: "file_shared",
+              filename: file.name,
+              file_size: file.size
+            }));
+          }
+        } else {
+          console.error('File upload failed:', response.status);
+        }
       } catch (error) {
         console.error("File upload failed:", error);
       }
@@ -306,8 +440,31 @@ const Session = () => {
   };
 
   const downloadFile = async (filename: string) => {
-    // Files are now downloaded automatically when received via WebRTC
-    console.log("Download not needed - files are received automatically");
+    if (webrtcRef.current) {
+      // Files are downloaded automatically when received via WebRTC
+      console.log("Download not needed - files are received automatically");
+    } else if (pairing) {
+      // Download via HTTP for multi-device shared files
+      try {
+        const response = await fetch(`${(import.meta as any).env?.VITE_API_BASE || "http://localhost:8000"}/api/pairing/${pairing.id}/files/${filename}`);
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+          console.log('File downloaded successfully:', filename);
+        } else {
+          console.error('File download failed:', response.status);
+        }
+      } catch (error) {
+        console.error('File download failed:', error);
+      }
+    }
   };
 
   const handleDisconnect = () => {
@@ -315,6 +472,12 @@ const Session = () => {
     if (webrtcRef.current) {
       webrtcRef.current.close();
       webrtcRef.current = null;
+    }
+    
+    // Close WebSocket connection
+    if (websocketRef.current) {
+      websocketRef.current.close();
+      websocketRef.current = null;
     }
 
     // Clear all cache and state
