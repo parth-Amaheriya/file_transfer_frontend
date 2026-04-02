@@ -3,12 +3,27 @@ import type { Message } from "./api";
 // Check if WebRTC is available
 const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
 
+// Check if File System Access API is available
+const isFileSystemAccessAvailable = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+
 export interface FileTransferProgress {
   id: string;
   name: string;
   size: number;
   progress: number;
   status: 'sending' | 'receiving' | 'completed' | 'failed';
+}
+
+interface ReceivedFileData {
+  chunks?: Map<number, Uint8Array>; // For memory buffer mode
+  fileHandle?: FileSystemFileHandle; // For streaming mode
+  totalSize: number;
+  mimeType: string;
+  fileId: string;
+  expectedChunks: number;
+  startTime: number;
+  mode: 'memory' | 'streaming'; // Which mode is being used
+  bytesWritten?: number; // For streaming mode
 }
 
 export class WebRTCManager {
@@ -24,7 +39,7 @@ export class WebRTCManager {
   private signalingInterval: number | null = null;
   private connectionTimeout: number | null = null;
   private pendingIceCandidates: RTCIceCandidate[] = []; // Buffer ICE candidates until remote description is set
-  private receivedFiles: Map<string, { chunks: Map<number, Uint8Array>; totalSize: number; mimeType: string; fileId: string; expectedChunks: number; startTime: number }> = new Map();
+  private receivedFiles: Map<string, ReceivedFileData> = new Map();
 
   constructor(
     signalingServer: string,
@@ -139,6 +154,54 @@ export class WebRTCManager {
     };
   }
 
+  private async requestFileHandle(filename: string, mimeType: string): Promise<FileSystemFileHandle> {
+    try {
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: mimeType || 'File',
+            accept: { [mimeType || 'application/octet-stream']: ['.bin'] }
+          }
+        ]
+      });
+      console.log(`File handle obtained for: ${filename}`);
+      return fileHandle;
+    } catch (error) {
+      if ((error as DOMException).name === 'AbortError') {
+        throw new Error('User cancelled file save');
+      }
+      throw error;
+    }
+  }
+
+  private async writeChunkToFile(fileHandle: FileSystemFileHandle, chunkData: Uint8Array): Promise<void> {
+    try {
+      const writable = await fileHandle.createWritable();
+      // Convert to plain Uint8Array without shared buffer type issues
+      const plainBuffer = new Uint8Array(chunkData);
+      await writable.write(plainBuffer as any);
+      await writable.close();
+    } catch (error) {
+      console.error('Error writing chunk to file:', error);
+      throw error;
+    }
+  }
+
+  private async appendChunkToFile(fileHandle: FileSystemFileHandle, chunkData: Uint8Array, offset: number): Promise<void> {
+    try {
+      const writable = await fileHandle.createWritable({ keepExistingData: true });
+      await writable.seek(offset);
+      // Convert to plain Uint8Array without shared buffer type issues
+      const plainBuffer = new Uint8Array(chunkData);
+      await writable.write(plainBuffer as any);
+      await writable.close();
+    } catch (error) {
+      console.error('Error appending chunk to file:', error);
+      throw error;
+    }
+  }
+
   private async handleDataChannelMessage(data: ArrayBuffer | string): Promise<void> {
     try {
       if (typeof data === 'string') {
@@ -156,14 +219,35 @@ export class WebRTCManager {
 
           console.log(`Starting to receive file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}`);
 
-          this.receivedFiles.set(message.filename, {
-            chunks: new Map(),
+          // Decide which mode to use: streaming for files >100MB when available, memory buffer otherwise
+          let mode: 'memory' | 'streaming' = 'memory';
+          let fileHandle: FileSystemFileHandle | undefined;
+
+          if (isFileSystemAccessAvailable && message.file_size > 100 * 1024 * 1024) {
+            try {
+              console.log('File size >100MB and FileSystem API available, requesting save location...');
+              fileHandle = await this.requestFileHandle(message.filename, message.mime_type);
+              mode = 'streaming';
+              console.log('File system streaming mode enabled');
+            } catch (error) {
+              console.warn('Failed to enable streaming mode, falling back to memory buffer:', error);
+              mode = 'memory';
+            }
+          }
+
+          const receivedFileData: ReceivedFileData = {
             totalSize: message.file_size,
             mimeType: message.mime_type || '',
             fileId,
             expectedChunks,
-            startTime: Date.now()
-          });
+            startTime: Date.now(),
+            mode,
+            chunks: mode === 'memory' ? new Map() : undefined,
+            fileHandle: mode === 'streaming' ? fileHandle : undefined,
+            bytesWritten: mode === 'streaming' ? 0 : undefined
+          };
+
+          this.receivedFiles.set(message.filename, receivedFileData);
 
           this.onFileProgress({
             id: fileId,
@@ -173,6 +257,8 @@ export class WebRTCManager {
             status: 'receiving'
           });
 
+          console.log(`File reception mode: ${mode} (${message.file_size} bytes)`);
+
         } else if (message.type === 'file_end' && message.filename) {
           // File transfer complete
           const fileData = this.receivedFiles.get(message.filename);
@@ -181,38 +267,53 @@ export class WebRTCManager {
             const avgSpeed = fileData.totalSize / (totalTime / 1000) / (1024 * 1024); // MB/s
             console.log(`File reception completed: ${message.filename} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
 
-            // Combine all chunks in order
-            const sortedChunks = Array.from(fileData.chunks.entries())
-              .sort(([a], [b]) => a - b)
-              .map(([, chunk]) => chunk);
+            if (fileData.mode === 'streaming') {
+              // Streaming mode: file is already on disk
+              console.log(`Streaming complete, file saved: ${message.filename}`);
+              
+              this.onFileProgress({
+                id: fileData.fileId,
+                name: message.filename,
+                size: fileData.totalSize,
+                progress: 100,
+                status: 'completed'
+              });
+            } else {
+              // Memory buffer mode: combine chunks and download
+              if (fileData.chunks) {
+                const sortedChunks = Array.from(fileData.chunks.entries())
+                  .sort(([a], [b]) => a - b)
+                  .map(([, chunk]) => chunk);
 
-            const totalSize = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-            const combined = new Uint8Array(totalSize);
-            let offset = 0;
-            for (const chunk of sortedChunks) {
-              combined.set(chunk, offset);
-              offset += chunk.length;
+                const totalSize = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                const combined = new Uint8Array(totalSize);
+                let offset = 0;
+                for (const chunk of sortedChunks) {
+                  combined.set(chunk, offset);
+                  offset += chunk.length;
+                }
+
+                // Create blob and trigger download
+                const blob = new Blob([combined], { type: fileData.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = message.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // Update progress
+                this.onFileProgress({
+                  id: fileData.fileId,
+                  name: message.filename,
+                  size: fileData.totalSize,
+                  progress: 100,
+                  status: 'completed'
+                });
+              }
             }
-
-            // Create blob and trigger download
-            const blob = new Blob([combined], { type: fileData.mimeType });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = message.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            // Update progress
-            this.onFileProgress({
-              id: fileData.fileId,
-              name: message.filename,
-              size: fileData.totalSize,
-              progress: 100,
-              status: 'completed'
-            });
 
             this.receivedFiles.delete(message.filename);
           }
@@ -235,26 +336,68 @@ export class WebRTCManager {
             const [filename, fileData] = fileEntries[0];
             const uint8Array = new Uint8Array(chunkData);
 
-            // Store chunk by index
-            fileData.chunks.set(chunkIndex, uint8Array);
+            if (fileData.mode === 'streaming' && fileData.fileHandle) {
+              // Write chunk directly to file
+              try {
+                const chunkSize = fileData.totalSize < 1024 * 1024 ? 16 * 1024 :
+                                 fileData.totalSize < 100 * 1024 * 1024 ? 64 * 1024 :
+                                 128 * 1024;
+                const offset = chunkIndex * chunkSize;
+                
+                await this.appendChunkToFile(fileData.fileHandle, uint8Array, offset);
+                fileData.bytesWritten = (fileData.bytesWritten || 0) + uint8Array.length;
 
-            const receivedChunks = fileData.chunks.size;
-            const progress = (receivedChunks / fileData.expectedChunks) * 100;
+                const receivedChunks = chunkIndex + 1;
+                const progress = (receivedChunks / fileData.expectedChunks) * 100;
 
-            // Log progress for large files
-            if (receivedChunks % 100 === 0 || receivedChunks === fileData.expectedChunks) {
-              const elapsed = Date.now() - fileData.startTime;
-              const speed = (receivedChunks * (fileData.totalSize / fileData.expectedChunks)) / (elapsed / 1000) / (1024 * 1024); // MB/s
-              console.log(`Received ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+                // Log progress for large files
+                if (receivedChunks % 10 === 0 || receivedChunks === fileData.expectedChunks) {
+                  const elapsed = Date.now() - fileData.startTime;
+                  const speed = (fileData.bytesWritten || 0) / (elapsed / 1000) / (1024 * 1024); // MB/s
+                  console.log(`Streamed ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+                }
+
+                this.onFileProgress({
+                  id: fileData.fileId,
+                  name: filename,
+                  size: fileData.totalSize,
+                  progress,
+                  status: 'receiving'
+                });
+              } catch (error) {
+                console.error('Error writing chunk to file:', error);
+                this.onFileProgress({
+                  id: fileData.fileId,
+                  name: filename,
+                  size: fileData.totalSize,
+                  progress: 0,
+                  status: 'failed'
+                });
+              }
+            } else {
+              // Memory buffer mode: store chunk as before
+              if (fileData.chunks) {
+                fileData.chunks.set(chunkIndex, uint8Array);
+
+                const receivedChunks = fileData.chunks.size;
+                const progress = (receivedChunks / fileData.expectedChunks) * 100;
+
+                // Log progress for large files
+                if (receivedChunks % 100 === 0 || receivedChunks === fileData.expectedChunks) {
+                  const elapsed = Date.now() - fileData.startTime;
+                  const speed = (receivedChunks * (fileData.totalSize / fileData.expectedChunks)) / (elapsed / 1000) / (1024 * 1024); // MB/s
+                  console.log(`Received ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+                }
+
+                this.onFileProgress({
+                  id: fileData.fileId,
+                  name: filename,
+                  size: fileData.totalSize,
+                  progress,
+                  status: 'receiving'
+                });
+              }
             }
-
-            this.onFileProgress({
-              id: fileData.fileId,
-              name: filename,
-              size: fileData.totalSize,
-              progress,
-              status: 'receiving'
-            });
           }
         }
       }
