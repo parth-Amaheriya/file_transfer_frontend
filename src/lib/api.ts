@@ -12,6 +12,8 @@ export interface PairingCodeOut {
   status: string;
   initiator: DeviceDescriptor;
   peer?: DeviceDescriptor;
+  peers?: DeviceDescriptor[];
+  peer_count?: number;
   created_at: string;
   connected_at?: string;
   expires_at: string;

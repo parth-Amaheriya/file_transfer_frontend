@@ -130,8 +130,30 @@ const Session = () => {
     }
   }, [pairing, joinCode]);
 
+  // Poll for peer updates - refresh peer list for all connected devices
   useEffect(() => {
-    if (pairing?.status === "connected" && !webrtcRef.current) {
+    if (pairing && (pairing.status === "active" || pairing.status === "connected")) {
+      console.log('Starting peer list polling');
+      const pollInterval = setInterval(async () => {
+        try {
+          const updatedPairing = await api.getPairing(pairing.code);
+          // Update if peer count or peer list changed
+          if ((updatedPairing.peer_count || 0) !== (pairing.peer_count || 0) ||
+              JSON.stringify(updatedPairing.peers) !== JSON.stringify(pairing.peers)) {
+            console.log(`Peer count updated: ${updatedPairing.peer_count || 0}`);
+            setPairing(updatedPairing);
+          }
+        } catch (error) {
+          console.error("Failed to poll peer updates:", error);
+        }
+      }, 3000); // Poll every 3 seconds
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [pairing?.code, pairing?.status]);
+
+  useEffect(() => {
+    if ((pairing?.status === "connected" || pairing?.status === "active") && !webrtcRef.current) {
       const isInitiator = !joinCode; // The device that initiated is the offerer
       console.log(`Initializing WebRTC for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const webrtc = new WebRTCManager(
@@ -340,6 +362,8 @@ const Session = () => {
               pairing.status === "pending" ? "waiting" : "connecting"
             }
             onDisconnect={handleDisconnect}
+            peers={pairing.peers}
+            peerCount={pairing.peer_count}
           />
 
           <div className="surface-elevated rounded-xl p-6">
