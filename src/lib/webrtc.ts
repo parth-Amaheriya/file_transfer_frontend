@@ -22,7 +22,8 @@ export class WebRTCManager {
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   private onFileProgress: (progress: FileTransferProgress) => void;
   private signalingInterval: number | null = null;
-  private receivedFiles: Map<string, { chunks: Map<number, Uint8Array>; totalSize: number; mimeType: string; fileId: string; expectedChunks: number }> = new Map();
+  private connectionTimeout: number | null = null;
+  private receivedFiles: Map<string, { chunks: Map<number, Uint8Array>; totalSize: number; mimeType: string; fileId: string; expectedChunks: number; startTime: number }> = new Map();
 
   constructor(
     signalingServer: string,
@@ -57,15 +58,35 @@ export class WebRTCManager {
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log('ICE candidate generated:', event.candidate);
         this.sendSignalingMessage({
           type: 'ice_candidate',
           data: event.candidate
         });
+      } else {
+        console.log('ICE candidate gathering complete');
       }
     };
 
+    this.peerConnection.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', this.peerConnection!.iceConnectionState);
+    };
+
     this.peerConnection.onconnectionstatechange = () => {
+      console.log('Peer connection state:', this.peerConnection!.connectionState);
       this.onConnectionStateChange(this.peerConnection!.connectionState);
+
+      // Clear timeout if connected
+      if (this.peerConnection!.connectionState === 'connected') {
+        if (this.connectionTimeout) {
+          clearTimeout(this.connectionTimeout);
+          this.connectionTimeout = null;
+        }
+      }
+    };
+
+    this.peerConnection.onicegatheringstatechange = () => {
+      console.log('ICE gathering state:', this.peerConnection!.iceGatheringState);
     };
 
     // Create data channel if initiator
@@ -86,6 +107,14 @@ export class WebRTCManager {
 
     // Start signaling
     this.startSignaling();
+
+    // Set connection timeout (30 seconds)
+    this.connectionTimeout = window.setTimeout(() => {
+      if (this.peerConnection?.connectionState !== 'connected') {
+        console.error('WebRTC connection timeout - no connection established within 30 seconds');
+        this.onConnectionStateChange('failed');
+      }
+    }, 30000);
   }
 
   private setupDataChannel(): void {
@@ -94,11 +123,15 @@ export class WebRTCManager {
     this.dataChannel.binaryType = 'arraybuffer'; // Enable binary data transfer
 
     this.dataChannel.onopen = () => {
-      console.log('Data channel opened');
+      console.log('Data channel opened successfully');
     };
 
     this.dataChannel.onclose = () => {
       console.log('Data channel closed');
+    };
+
+    this.dataChannel.onerror = (event) => {
+      console.error('Data channel error:', event);
     };
 
     this.dataChannel.onmessage = (event) => {
@@ -232,10 +265,12 @@ export class WebRTCManager {
 
   private async startSignaling(): Promise<void> {
     if (this.isInitiator) {
+      console.log('Creating offer as initiator');
       // Create offer
       const offer = await this.peerConnection!.createOffer();
       await this.peerConnection!.setLocalDescription(offer);
 
+      console.log('Sending offer:', offer);
       await this.sendSignalingMessage({
         type: 'offer',
         data: offer
@@ -246,6 +281,9 @@ export class WebRTCManager {
     this.signalingInterval = window.setInterval(async () => {
       try {
         const messages = await this.getSignalingMessages();
+        if (messages.length > 0) {
+          console.log('Received signaling messages:', messages);
+        }
         for (const message of messages) {
           await this.handleSignalingMessage(message);
         }
@@ -256,41 +294,54 @@ export class WebRTCManager {
   }
 
   private async handleSignalingMessage(message: any): Promise<void> {
+    console.log('Handling signaling message:', message);
+
     if (message.type === 'offer' && !this.isInitiator) {
+      console.log('Received offer, creating answer');
       await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
       const answer = await this.peerConnection!.createAnswer();
       await this.peerConnection!.setLocalDescription(answer);
 
+      console.log('Sending answer:', answer);
       await this.sendSignalingMessage({
         type: 'answer',
         data: answer
       });
 
     } else if (message.type === 'answer' && this.isInitiator) {
+      console.log('Received answer, setting remote description');
       await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
 
     } else if (message.type === 'ice_candidate') {
+      console.log('Adding ICE candidate:', message.data);
       await this.peerConnection!.addIceCandidate(new RTCIceCandidate(message.data));
     }
   }
 
   private async sendSignalingMessage(message: any): Promise<void> {
+    console.log('Sending signaling message:', message);
     const response = await fetch(`${this.signalingServer}/api/pairing/${this.pairingId}/signaling`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message)
     });
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to send signaling message:', response.status, errorText);
       throw new Error('Failed to send signaling message');
     }
+    console.log('Signaling message sent successfully');
   }
 
   private async getSignalingMessages(): Promise<any[]> {
     const response = await fetch(`${this.signalingServer}/api/pairing/${this.pairingId}/signaling`);
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to get signaling messages:', response.status, errorText);
       throw new Error('Failed to get signaling messages');
     }
-    return response.json();
+    const messages = await response.json();
+    return messages;
   }
 
   async sendMessage(message: WebRTCMessage): Promise<void> {
@@ -460,6 +511,9 @@ export class WebRTCManager {
   close(): void {
     if (this.signalingInterval) {
       clearInterval(this.signalingInterval);
+    }
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
     }
     if (this.dataChannel) {
       this.dataChannel.close();
