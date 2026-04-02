@@ -755,8 +755,7 @@ export class WebRTCManager {
             progress: (sentChunks / totalChunks) * 100,
             status: 'failed'
           });
-          this.activeTransfers.delete(transferKey);
-          throw new Error('File transfer cancelled by user');
+          break; // Exit the loop gracefully instead of throwing
         }
 
         const start = chunkIndex * chunkSize;
