@@ -33,6 +33,8 @@ const Session = () => {
   const [activeTab, setActiveTab] = useState<string>("files");
   const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
   const webrtcRef = useRef<WebRTCManager | null>(null);
+  const lastProcessedMessageIndexRef = useRef<number>(-1);
+  const markedFilesUnreadRef = useRef<Set<string>>(new Set());
 
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
@@ -194,8 +196,9 @@ const Session = () => {
                 direction: progress.status === 'receiving' ? 'received' : 'sent'
               };
               
-              // Mark files tab as unread if receiving
-              if (progress.status === 'receiving') {
+              // Mark files tab as unread only if receiving and not already marked
+              if (progress.status === 'receiving' && !markedFilesUnreadRef.current.has(progress.id)) {
+                markedFilesUnreadRef.current.add(progress.id);
                 setUnreadTabs(prev => new Set([...prev, 'files']));
               }
               
@@ -219,26 +222,32 @@ const Session = () => {
     }
   }, [pairing?.status, pairing?.id, deviceId, joinCode]);
 
-  // Watch for new messages from peer and enforce unread state for inactive tabs
+  // Watch for new messages from peer and mark tabs as unread
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      
-      // Only process messages from peer (not sent by us)
-      if (lastMessage.sender === "peer" || (lastMessage.sender !== "you" && lastMessage.sender !== undefined)) {
-        if (lastMessage.type === "text") {
-          const tabToMark = lastMessage.isCode ? "code" : "messages";
-          
-          // Only mark as unread if we're not currently viewing this tab
-          if (activeTab !== tabToMark) {
-            setUnreadTabs(prev => new Set([...prev, tabToMark]));
-          }
-        } else if (lastMessage.type.includes("file")) {
-          if (activeTab !== "files") {
-            setUnreadTabs(prev => new Set([...prev, "files"]));
+    // Only process messages that haven't been processed yet
+    if (messages.length > lastProcessedMessageIndexRef.current + 1) {
+      for (let i = lastProcessedMessageIndexRef.current + 1; i < messages.length; i++) {
+        const message = messages[i];
+        
+        // Only process messages from peer (not sent by us)
+        if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
+          if (message.type === "text") {
+            const tabToMark = message.isCode ? "code" : "messages";
+            
+            // Only mark as unread if we're not currently viewing this tab
+            if (activeTab !== tabToMark) {
+              setUnreadTabs(prev => new Set([...prev, tabToMark]));
+            }
+          } else if (message.type.includes("file")) {
+            if (activeTab !== "files") {
+              setUnreadTabs(prev => new Set([...prev, "files"]));
+            }
           }
         }
       }
+      
+      // Update the last processed message index
+      lastProcessedMessageIndexRef.current = messages.length - 1;
     }
   }, [messages, activeTab]);
 
@@ -339,6 +348,12 @@ const Session = () => {
               setUnreadTabs(prev => {
                 const updated = new Set(prev);
                 updated.delete(value);
+                
+                // Clear marked files when user views the files tab
+                if (value === "files") {
+                  markedFilesUnreadRef.current.clear();
+                }
+                
                 return updated;
               });
             }}>
