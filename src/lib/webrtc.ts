@@ -631,18 +631,7 @@ export class WebRTCManager {
     let transferKey: string | null = null;
     let filename: string | null = null;
 
-    // Find the transfer record
-    for (const [key, transfer] of this.activeTransfers.entries()) {
-      if (transfer.fileId === fileId) {
-        transfer.cancelled = true;
-        transferKey = key;
-        filename = transfer.filename || null;
-        console.log(`Marked transfer ${key} as cancelled`);
-        break;
-      }
-    }
-
-    // Also check receiving files and send cancellation message
+    // First, check if we're receiving this file
     const receivingFilename = Array.from(this.receivingFilesByFileId.entries()).find(
       ([id]) => id === fileId
     )?.[1];
@@ -651,7 +640,30 @@ export class WebRTCManager {
       filename = receivingFilename;
       const fileData = this.receivedFiles.get(receivingFilename);
       if (fileData) {
+        console.log(`Cancelling reception of file: ${receivingFilename}`);
         fileData.cancelled = true;
+        
+        // Update UI immediately to show failed status
+        this.onFileProgress({
+          id: fileId,
+          name: receivingFilename,
+          size: fileData.totalSize,
+          progress: (fileData.chunks?.size || 0) / fileData.expectedChunks * 100,
+          status: 'failed'
+        });
+        
+        console.log(`File marked as cancelled: ${receivingFilename}`);
+      }
+    } else {
+      // Check if we're sending this file
+      for (const [key, transfer] of this.activeTransfers.entries()) {
+        if (transfer.fileId === fileId) {
+          transfer.cancelled = true;
+          transferKey = key;
+          filename = transfer.filename || null;
+          console.log(`Marked transfer ${key} as cancelled`);
+          break;
+        }
       }
     }
 
