@@ -70,7 +70,7 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, onCancelTransfer, fil
       </div>
 
       <div className="space-y-2">
-        {files.map((file) => {
+        {[...files].reverse().map((file) => {
           const Icon = typeIcons[file.type];
           const isTransferring = file.status === 'sending' || file.status === 'uploading' || file.status === 'receiving';
           return (
