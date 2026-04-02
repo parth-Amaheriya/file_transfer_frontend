@@ -25,7 +25,7 @@ const Session = () => {
   });
   const [deviceId, setDeviceId] = useState<string>(() => {
     // Restore device ID from sessionStorage
-    return sessionStorage.getItem("deviceId") || crypto.randomUUID();
+    return sessionStorage.getItem("deviceId") || Math.random().toString(36).substr(2, 9);
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -115,7 +115,7 @@ const Session = () => {
     if (pairing?.status === "connected" && !webrtcRef.current) {
       const isInitiator = !joinCode; // The device that initiated is the offerer
       const webrtc = new WebRTCManager(
-        import.meta.env.VITE_API_BASE || "http://localhost:8000",
+        (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000",
         pairing.id,
         deviceId,
         isInitiator,
@@ -173,7 +173,7 @@ const Session = () => {
   const uploadFile = async (file: File) => {
     if (webrtcRef.current) {
       // Add to files list with initial status
-      const fileId = crypto.randomUUID();
+      const fileId = Math.random().toString(36).substr(2, 9);
       const fileItem = {
         id: fileId,
         name: file.name,
@@ -197,27 +197,6 @@ const Session = () => {
       } catch (error) {
         console.error("File upload failed:", error);
         setFiles(prev => prev.map(f =>
-          f.id === fileId ? { ...f, status: "failed" as const } : f
-        ));
-      }
-    }
-  }; 
-            f.id === fileId ? { ...f, progress: Math.round(progress) } : f
-          ));
-        });
-        
-        // Mark as completed
-        setFiles(prev => prev.map(f => 
-          f.id === fileId ? { ...f, progress: 100, status: "completed" as const } : f
-        ));
-        
-        // Send file_init message via WS
-        const message: Message = { type: "file_init", file_name: file.name, file_size: file.size, mime_type: file.type };
-        wsRef.current?.send(JSON.stringify(message));
-      } catch (error) {
-        console.error("Upload failed", error);
-        // Mark as failed
-        setFiles(prev => prev.map(f => 
           f.id === fileId ? { ...f, status: "failed" as const } : f
         ));
       }

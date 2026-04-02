@@ -1,24 +1,14 @@
+import type { Message } from "./api";
+
+// Check if WebRTC is available
+const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
+
 export interface FileTransferProgress {
   id: string;
   name: string;
   size: number;
   progress: number;
   status: 'sending' | 'receiving' | 'completed' | 'failed';
-}
-
-export interface Message {
-  type: 'text' | 'file_init' | 'file_chunk' | 'file_end' | 'peer_connected' | 'file_shared';
-  content?: string;
-  file_name?: string;
-  filename?: string;
-  file_size?: number;
-  chunk_data?: string;
-  chunk_size?: number;
-  mime_type?: string;
-  timestamp?: string | number;
-  sender?: 'you' | 'peer';
-  isCode?: boolean;
-  codeTitle?: string;
 }
 
 export class WebRTCManager {
@@ -28,7 +18,7 @@ export class WebRTCManager {
   private pairingId: string;
   private deviceId: string;
   private isInitiator: boolean;
-  private onMessage: (message: Message) => void;
+  private onMessage: (message: WebRTCMessage) => void;
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   private onFileProgress: (progress: FileTransferProgress) => void;
   private signalingInterval: number | null = null;
@@ -52,6 +42,10 @@ export class WebRTCManager {
   }
 
   async initialize(): Promise<void> {
+    if (!isWebRTCAvailable) {
+      throw new Error('WebRTC is not available in this environment');
+    }
+
     // Create peer connection
     this.peerConnection = new RTCPeerConnection({
       iceServers: [
@@ -133,7 +127,7 @@ export class WebRTCManager {
 
             // Update progress
             this.onFileProgress({
-              id: crypto.randomUUID(),
+              id: Math.random().toString(36).substr(2, 9),
               name: message.filename,
               size: message.file_size || 0,
               progress: 100,
@@ -214,7 +208,7 @@ export class WebRTCManager {
     return response.json();
   }
 
-  async sendMessage(message: Message): Promise<void> {
+  async sendMessage(message: WebRTCMessage): Promise<void> {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
       this.dataChannel.send(JSON.stringify(message));
     }
@@ -225,7 +219,7 @@ export class WebRTCManager {
       throw new Error('Data channel not ready');
     }
 
-    const fileId = crypto.randomUUID();
+    const fileId = Math.random().toString(36).substr(2, 9);
 
     // For now, send small files as base64. For larger files, implement chunking
     if (file.size > 50 * 1024 * 1024) { // 50MB limit for base64
@@ -243,7 +237,12 @@ export class WebRTCManager {
 
     // Read file as base64
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binaryString = '';
+    for (let i = 0; i < uint8Array.length; i++) {
+      binaryString += String.fromCharCode(uint8Array[i]);
+    }
+    const base64 = btoa(binaryString);
 
     if (onProgress) onProgress(50);
 
@@ -255,7 +254,7 @@ export class WebRTCManager {
       mime_type: file.type,
       chunk_data: base64,
       timestamp: Date.now()
-    };
+    } as Message;
 
     this.dataChannel.send(JSON.stringify(message));
 
