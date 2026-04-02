@@ -43,6 +43,7 @@ export class WebRTCManager {
   private receivedFiles: Map<string, ReceivedFileData> = new Map();
   private activeTransfers: Map<string, { cancelled: boolean; fileId?: string; filename?: string }> = new Map(); // Track active file transfers for cancellation
   private receivingFilesByFileId: Map<string, string> = new Map(); // Track fileId -> filename for receiving files
+  private sendingFilesByFileId: Map<string, { filename: string; size: number }> = new Map(); // Track fileId -> {filename, size} for sending files
 
   constructor(
     signalingServer: string,
@@ -333,9 +334,12 @@ export class WebRTCManager {
 
         } else if (message.type === 'file_cancel' && message.filename) {
           // Remote side cancelled the file transfer
+          console.log(`Received cancellation for file: ${message.filename}`);
+
+          // Check if we're receiving this file
           const fileData = this.receivedFiles.get(message.filename);
           if (fileData) {
-            console.log(`Remote side cancelled file transfer: ${message.filename}`);
+            console.log(`Stopping reception of file: ${message.filename}`);
             
             // Mark file as cancelled
             fileData.cancelled = true;
@@ -356,6 +360,36 @@ export class WebRTCManager {
                 this.receivingFilesByFileId.delete(fileId);
                 break;
               }
+            }
+          } else {
+            // Check if we're sending this file
+            let foundTransfer = false;
+            let fileIdToCleanup: string | null = null;
+            
+            for (const [key, transfer] of this.activeTransfers.entries()) {
+              if (transfer.filename === message.filename) {
+                console.log(`Stopping transmission of file: ${message.filename}`);
+                transfer.cancelled = true;
+                fileIdToCleanup = transfer.fileId || null;
+                foundTransfer = true;
+                
+                // Update UI progress to failed immediately
+                const sendingFile = this.sendingFilesByFileId.get(transfer.fileId || '');
+                if (sendingFile && transfer.fileId) {
+                  this.onFileProgress({
+                    id: transfer.fileId,
+                    name: message.filename,
+                    size: sendingFile.size,
+                    progress: 0,
+                    status: 'failed'
+                  });
+                }
+                break;
+              }
+            }
+            
+            if (foundTransfer && fileIdToCleanup) {
+              console.log(`File transfer marked as cancelled by remote side: ${message.filename}`);
             }
           }
         }
@@ -673,6 +707,8 @@ export class WebRTCManager {
     
     // Track this transfer for cancellation
     this.activeTransfers.set(transferKey, { cancelled: false, fileId, filename: file.name });
+    // Also track fileId -> filename mapping for cancellation message handling
+    this.sendingFilesByFileId.set(fileId, { filename: file.name, size: file.size });
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files
@@ -808,6 +844,7 @@ export class WebRTCManager {
     } finally {
       // Clean up the transfer record
       this.activeTransfers.delete(transferKey);
+      this.sendingFilesByFileId.delete(fileId);
     }
   }
 
