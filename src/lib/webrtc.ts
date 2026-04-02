@@ -383,6 +383,9 @@ export class WebRTCManager {
                     progress: 0,
                     status: 'failed'
                   });
+                  
+                  // Clean up the sending file mapping
+                  this.sendingFilesByFileId.delete(transfer.fileId);
                 }
                 break;
               }
@@ -661,20 +664,23 @@ export class WebRTCManager {
           transfer.cancelled = true;
           transferKey = key;
           filename = transfer.filename || null;
-          console.log(`Marked transfer ${key} as cancelled`);
           
-          // Update UI immediately to show failed status for sending files too
+          // Update UI immediately to show failed status for sending file
           const sendingFile = this.sendingFilesByFileId.get(fileId);
           if (sendingFile) {
             this.onFileProgress({
               id: fileId,
-              name: filename || '',
+              name: sendingFile.filename,
               size: sendingFile.size,
-              progress: 0,
+              progress: 0, // We don't know current progress, so show 0
               status: 'failed'
             });
-            console.log(`Sending file UI updated to failed: ${filename}`);
+            
+            // Clean up the sending file mapping
+            this.sendingFilesByFileId.delete(fileId);
           }
+          
+          console.log(`Marked transfer ${key} as cancelled`);
           break;
         }
       }
