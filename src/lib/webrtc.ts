@@ -24,6 +24,7 @@ interface ReceivedFileData {
   startTime: number;
   mode: 'memory' | 'streaming'; // Which mode is being used
   bytesWritten?: number; // For streaming mode
+  cancelled?: boolean; // Flag to indicate cancellation
 }
 
 export class WebRTCManager {
@@ -40,7 +41,8 @@ export class WebRTCManager {
   private connectionTimeout: number | null = null;
   private pendingIceCandidates: RTCIceCandidate[] = []; // Buffer ICE candidates until remote description is set
   private receivedFiles: Map<string, ReceivedFileData> = new Map();
-  private activeTransfers: Map<string, { cancelled: boolean; fileId?: string }> = new Map(); // Track active file transfers for cancellation
+  private activeTransfers: Map<string, { cancelled: boolean; fileId?: string; filename?: string }> = new Map(); // Track active file transfers for cancellation
+  private receivingFilesByFileId: Map<string, string> = new Map(); // Track fileId -> filename for receiving files
 
   constructor(
     signalingServer: string,
@@ -245,10 +247,13 @@ export class WebRTCManager {
             mode,
             chunks: mode === 'memory' ? new Map() : undefined,
             fileHandle: mode === 'streaming' ? fileHandle : undefined,
-            bytesWritten: mode === 'streaming' ? 0 : undefined
+            bytesWritten: mode === 'streaming' ? 0 : undefined,
+            cancelled: false
           };
 
           this.receivedFiles.set(message.filename, receivedFileData);
+          // Track fileId -> filename for cancellation
+          this.receivingFilesByFileId.set(fileId, message.filename);
 
           this.onFileProgress({
             id: fileId,
@@ -317,6 +322,41 @@ export class WebRTCManager {
             }
 
             this.receivedFiles.delete(message.filename);
+            // Clean up fileId mapping
+            for (const [fileId, name] of this.receivingFilesByFileId.entries()) {
+              if (name === message.filename) {
+                this.receivingFilesByFileId.delete(fileId);
+                break;
+              }
+            }
+          }
+
+        } else if (message.type === 'file_cancel' && message.filename) {
+          // Remote side cancelled the file transfer
+          const fileData = this.receivedFiles.get(message.filename);
+          if (fileData) {
+            console.log(`Remote side cancelled file transfer: ${message.filename}`);
+            
+            // Mark file as cancelled
+            fileData.cancelled = true;
+
+            // Update progress to failed
+            this.onFileProgress({
+              id: fileData.fileId,
+              name: message.filename,
+              size: fileData.totalSize,
+              progress: 0,
+              status: 'failed'
+            });
+
+            this.receivedFiles.delete(message.filename);
+            // Clean up fileId mapping
+            for (const [fileId, name] of this.receivingFilesByFileId.entries()) {
+              if (name === message.filename) {
+                this.receivingFilesByFileId.delete(fileId);
+                break;
+              }
+            }
           }
         }
 
@@ -335,6 +375,13 @@ export class WebRTCManager {
           const fileEntries = Array.from(this.receivedFiles.entries());
           if (fileEntries.length > 0) {
             const [filename, fileData] = fileEntries[0];
+            
+            // Skip if file was cancelled by remote side
+            if (fileData.cancelled) {
+              console.log(`Skipping chunk for cancelled file: ${filename}`);
+              return;
+            }
+
             const uint8Array = new Uint8Array(chunkData);
 
             if (fileData.mode === 'streaming' && fileData.fileHandle) {
@@ -546,12 +593,52 @@ export class WebRTCManager {
 
   cancelFileTransfer(fileId: string): void {
     console.log(`Cancelling file transfer: ${fileId}`);
+    
+    let transferKey: string | null = null;
+    let filename: string | null = null;
+
+    // Find the transfer record
     for (const [key, transfer] of this.activeTransfers.entries()) {
       if (transfer.fileId === fileId) {
         transfer.cancelled = true;
+        transferKey = key;
+        filename = transfer.filename || null;
         console.log(`Marked transfer ${key} as cancelled`);
         break;
       }
+    }
+
+    // Also check receiving files and send cancellation message
+    const receivingFilename = Array.from(this.receivingFilesByFileId.entries()).find(
+      ([id]) => id === fileId
+    )?.[1];
+
+    if (receivingFilename) {
+      filename = receivingFilename;
+      const fileData = this.receivedFiles.get(receivingFilename);
+      if (fileData) {
+        fileData.cancelled = true;
+      }
+    }
+
+    // Send cancellation message to the other side
+    if (filename) {
+      this.sendCancellationMessage(filename);
+    }
+  }
+
+  private sendCancellationMessage(filename: string): void {
+    try {
+      const cancelMessage: Message = {
+        type: 'file_cancel',
+        filename: filename,
+        timestamp: Date.now()
+      };
+      this.sendMessage(cancelMessage).catch(error => {
+        console.error('Failed to send cancellation message:', error);
+      });
+    } catch (error) {
+      console.error('Error sending cancellation message:', error);
     }
   }
 
@@ -585,7 +672,7 @@ export class WebRTCManager {
     const transferKey = `transfer-${fileId}`;
     
     // Track this transfer for cancellation
-    this.activeTransfers.set(transferKey, { cancelled: false, fileId });
+    this.activeTransfers.set(transferKey, { cancelled: false, fileId, filename: file.name });
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files

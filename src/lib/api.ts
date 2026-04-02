@@ -18,7 +18,7 @@ export interface PairingCodeOut {
 }
 
 export interface Message {
-  type: "text" | "file_init" | "file_chunk" | "file_end" | "peer_connected" | "file_shared";
+  type: "text" | "file_init" | "file_chunk" | "file_end" | "file_cancel" | "peer_connected" | "file_shared";
   content?: string;
   file_name?: string;
   filename?: string;
