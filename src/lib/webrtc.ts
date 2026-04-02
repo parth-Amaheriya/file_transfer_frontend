@@ -23,6 +23,7 @@ export class WebRTCManager {
   private onFileProgress: (progress: FileTransferProgress) => void;
   private signalingInterval: number | null = null;
   private connectionTimeout: number | null = null;
+  private pendingIceCandidates: RTCIceCandidate[] = []; // Buffer ICE candidates until remote description is set
   private receivedFiles: Map<string, { chunks: Map<number, Uint8Array>; totalSize: number; mimeType: string; fileId: string; expectedChunks: number; startTime: number }> = new Map();
 
   constructor(
@@ -307,14 +308,41 @@ export class WebRTCManager {
         data: answer
       });
 
+      // Process any buffered ICE candidates now that remote description is set
+      await this.processPendingIceCandidates();
+
     } else if (message.type === 'answer' && this.isInitiator) {
       console.log('Received answer, setting remote description');
       await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
 
+      // Process any buffered ICE candidates now that remote description is set
+      await this.processPendingIceCandidates();
+
     } else if (message.type === 'ice_candidate') {
-      console.log('Adding ICE candidate:', message.data);
-      await this.peerConnection!.addIceCandidate(new RTCIceCandidate(message.data));
+      const candidate = new RTCIceCandidate(message.data);
+
+      // If remote description is not set yet, buffer the candidate
+      if (!this.peerConnection!.remoteDescription) {
+        console.log('Buffering ICE candidate until remote description is set');
+        this.pendingIceCandidates.push(candidate);
+      } else {
+        console.log('Adding ICE candidate immediately');
+        await this.peerConnection!.addIceCandidate(candidate);
+      }
     }
+  }
+
+  private async processPendingIceCandidates(): Promise<void> {
+    console.log(`Processing ${this.pendingIceCandidates.length} buffered ICE candidates`);
+    for (const candidate of this.pendingIceCandidates) {
+      try {
+        await this.peerConnection!.addIceCandidate(candidate);
+        console.log('Added buffered ICE candidate');
+      } catch (error) {
+        console.error('Failed to add buffered ICE candidate:', error);
+      }
+    }
+    this.pendingIceCandidates = [];
   }
 
   private async sendSignalingMessage(message: any): Promise<void> {
@@ -520,5 +548,7 @@ export class WebRTCManager {
     if (this.peerConnection) {
       this.peerConnection.close();
     }
+    // Clear any pending ICE candidates
+    this.pendingIceCandidates = [];
   }
 }
