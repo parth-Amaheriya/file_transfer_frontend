@@ -128,8 +128,8 @@ const Session = () => {
 
   useEffect(() => {
     if (pairing?.status === "connected" && !webrtcRef.current) {
-      console.log(`Initializing WebRTC for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const isInitiator = !joinCode; // The device that initiated is the offerer
+      console.log(`Initializing WebRTC for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const webrtc = new WebRTCManager(
         (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000",
         pairing.id,
