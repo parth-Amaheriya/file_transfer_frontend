@@ -269,7 +269,7 @@ export class WebRTCManager {
         } else if (message.type === 'file_end' && message.filename) {
           // File transfer complete
           const fileData = this.receivedFiles.get(message.filename);
-          if (fileData) {
+          if (fileData && !fileData.cancelled) {
             const totalTime = Date.now() - fileData.startTime;
             const avgSpeed = fileData.totalSize / (totalTime / 1000) / (1024 * 1024); // MB/s
             console.log(`File reception completed: ${message.filename} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
@@ -850,27 +850,30 @@ export class WebRTCManager {
         }
       }
 
-      // Send file end message (JSON)
-      const endMessage: Message = {
-        type: 'file_end',
-        filename: file.name,
-        timestamp: Date.now()
-      };
+      // Send file end message (JSON) only if not cancelled
+      const transfer = this.activeTransfers.get(transferKey);
+      if (!transfer?.cancelled) {
+        const endMessage: Message = {
+          type: 'file_end',
+          filename: file.name,
+          timestamp: Date.now()
+        };
 
-      await this.sendMessage(endMessage);
+        await this.sendMessage(endMessage);
 
-      const totalTime = Date.now() - startTime;
-      const avgSpeed = file.size / (totalTime / 1000) / (1024 * 1024); // MB/s
-      console.log(`File transfer completed: ${file.name} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
+        const totalTime = Date.now() - startTime;
+        const avgSpeed = file.size / (totalTime / 1000) / (1024 * 1024); // MB/s
+        console.log(`File transfer completed: ${file.name} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
 
-      // Update progress to completed
-      this.onFileProgress({
-        id: fileId,
-        name: file.name,
-        size: file.size,
-        progress: 100,
-        status: 'completed'
-      });
+        // Update progress to completed
+        this.onFileProgress({
+          id: fileId,
+          name: file.name,
+          size: file.size,
+          progress: 100,
+          status: 'completed'
+        });
+      }
     } finally {
       // Clean up the transfer record
       this.activeTransfers.delete(transferKey);
