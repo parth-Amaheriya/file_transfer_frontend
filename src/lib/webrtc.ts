@@ -22,6 +22,7 @@ export class WebRTCManager {
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   private onFileProgress: (progress: FileTransferProgress) => void;
   private signalingInterval: number | null = null;
+  private receivedFiles: Map<string, { chunks: Map<number, Uint8Array>; totalSize: number; mimeType: string; fileId: string; expectedChunks: number }> = new Map();
 
   constructor(
     signalingServer: string,
@@ -71,7 +72,9 @@ export class WebRTCManager {
     if (this.isInitiator) {
       this.dataChannel = this.peerConnection.createDataChannel('data', {
         ordered: true,
-        maxPacketLifeTime: 3000
+        maxPacketLifeTime: 3000,
+        maxRetransmits: 10, // Increase retransmits for reliability
+        protocol: 'file-transfer'
       });
       this.setupDataChannel();
     } else {
@@ -87,6 +90,8 @@ export class WebRTCManager {
 
   private setupDataChannel(): void {
     if (!this.dataChannel) return;
+
+    this.dataChannel.binaryType = 'arraybuffer'; // Enable binary data transfer
 
     this.dataChannel.onopen = () => {
       console.log('Data channel opened');
@@ -104,18 +109,60 @@ export class WebRTCManager {
   private async handleDataChannelMessage(data: ArrayBuffer | string): Promise<void> {
     try {
       if (typeof data === 'string') {
+        // Handle JSON messages
         const message: Message = JSON.parse(data);
 
-        if (message.type === 'file_shared' && message.chunk_data && message.filename) {
-          // Handle received file
-          try {
-            const binaryString = atob(message.chunk_data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
+        if (message.type === 'file_init' && message.filename && message.file_size) {
+          // Start receiving file
+          const fileId = Math.random().toString(36).substr(2, 9);
+          // Use same chunk size calculation as sender
+          const chunkSize = message.file_size < 1024 * 1024 ? 16 * 1024 :
+                           message.file_size < 100 * 1024 * 1024 ? 64 * 1024 :
+                           128 * 1024;
+          const expectedChunks = Math.ceil(message.file_size / chunkSize);
+
+          console.log(`Starting to receive file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}`);
+
+          this.receivedFiles.set(message.filename, {
+            chunks: new Map(),
+            totalSize: message.file_size,
+            mimeType: message.mime_type || '',
+            fileId,
+            expectedChunks,
+            startTime: Date.now()
+          });
+
+          this.onFileProgress({
+            id: fileId,
+            name: message.filename,
+            size: message.file_size,
+            progress: 0,
+            status: 'receiving'
+          });
+
+        } else if (message.type === 'file_end' && message.filename) {
+          // File transfer complete
+          const fileData = this.receivedFiles.get(message.filename);
+          if (fileData) {
+            const totalTime = Date.now() - fileData.startTime;
+            const avgSpeed = fileData.totalSize / (totalTime / 1000) / (1024 * 1024); // MB/s
+            console.log(`File reception completed: ${message.filename} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
+
+            // Combine all chunks in order
+            const sortedChunks = Array.from(fileData.chunks.entries())
+              .sort(([a], [b]) => a - b)
+              .map(([, chunk]) => chunk);
+
+            const totalSize = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            const combined = new Uint8Array(totalSize);
+            let offset = 0;
+            for (const chunk of sortedChunks) {
+              combined.set(chunk, offset);
+              offset += chunk.length;
             }
 
-            const blob = new Blob([bytes], { type: message.mime_type });
+            // Create blob and trigger download
+            const blob = new Blob([combined], { type: fileData.mimeType });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -127,18 +174,56 @@ export class WebRTCManager {
 
             // Update progress
             this.onFileProgress({
-              id: Math.random().toString(36).substr(2, 9),
+              id: fileData.fileId,
               name: message.filename,
-              size: message.file_size || 0,
+              size: fileData.totalSize,
               progress: 100,
               status: 'completed'
             });
-          } catch (error) {
-            console.error('Error processing received file:', error);
+
+            this.receivedFiles.delete(message.filename);
           }
         }
 
         this.onMessage(message);
+
+      } else if (data instanceof ArrayBuffer) {
+        // Handle binary messages
+        const view = new DataView(data);
+        const messageType = view.getUint8(0);
+
+        if (messageType === 2) { // Binary file chunk
+          const chunkIndex = view.getUint32(1, true);
+          const chunkData = data.slice(5); // Skip header
+
+          // Find the file being received (assuming one at a time for simplicity)
+          const fileEntries = Array.from(this.receivedFiles.entries());
+          if (fileEntries.length > 0) {
+            const [filename, fileData] = fileEntries[0];
+            const uint8Array = new Uint8Array(chunkData);
+
+            // Store chunk by index
+            fileData.chunks.set(chunkIndex, uint8Array);
+
+            const receivedChunks = fileData.chunks.size;
+            const progress = (receivedChunks / fileData.expectedChunks) * 100;
+
+            // Log progress for large files
+            if (receivedChunks % 100 === 0 || receivedChunks === fileData.expectedChunks) {
+              const elapsed = Date.now() - fileData.startTime;
+              const speed = (receivedChunks * (fileData.totalSize / fileData.expectedChunks)) / (elapsed / 1000) / (1024 * 1024); // MB/s
+              console.log(`Received ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+            }
+
+            this.onFileProgress({
+              id: fileData.fileId,
+              name: filename,
+              size: fileData.totalSize,
+              progress,
+              status: 'receiving'
+            });
+          }
+        }
       }
     } catch (error) {
       console.error('Error handling data channel message:', error);
@@ -210,7 +295,10 @@ export class WebRTCManager {
 
   async sendMessage(message: WebRTCMessage): Promise<void> {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      await this.waitForBufferSpace();
       this.dataChannel.send(JSON.stringify(message));
+    } else {
+      throw new Error('Data channel not ready');
     }
   }
 
@@ -219,12 +307,16 @@ export class WebRTCManager {
       throw new Error('Data channel not ready');
     }
 
-    const fileId = Math.random().toString(36).substr(2, 9);
+    console.log(`Starting file transfer: ${file.name} (${file.size} bytes)`);
 
-    // For now, send small files as base64. For larger files, implement chunking
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit for base64
-      throw new Error('File too large. Maximum size is 50MB for now.');
-    }
+    const fileId = Math.random().toString(36).substr(2, 9);
+    // Dynamic chunk size: smaller for small files, larger for big files
+    const chunkSize = file.size < 1024 * 1024 ? 16 * 1024 : // 16KB for files < 1MB
+                      file.size < 100 * 1024 * 1024 ? 64 * 1024 : // 64KB for files < 100MB
+                      128 * 1024; // 128KB for larger files
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
 
     // Update progress to sending
     this.onFileProgress({
@@ -235,38 +327,133 @@ export class WebRTCManager {
       status: 'sending'
     });
 
-    // Read file as base64
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    let binaryString = '';
-    for (let i = 0; i < uint8Array.length; i++) {
-      binaryString += String.fromCharCode(uint8Array[i]);
-    }
-    const base64 = btoa(binaryString);
-
-    if (onProgress) onProgress(50);
-
-    // Send file message
-    const message: Message = {
-      type: 'file_shared',
+    // Send file start message (JSON)
+    const startMessage: Message = {
+      type: 'file_init',
       filename: file.name,
       file_size: file.size,
       mime_type: file.type,
-      chunk_data: base64,
       timestamp: Date.now()
-    } as Message;
+    };
 
-    this.dataChannel.send(JSON.stringify(message));
+    await this.sendMessage(startMessage);
 
-    if (onProgress) onProgress(100);
+    let sentChunks = 0;
+    const startTime = Date.now();
 
-    // Update progress
+    // Send file in chunks (binary)
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      const chunk = file.slice(start, end);
+
+      const arrayBuffer = await chunk.arrayBuffer();
+
+      // Create binary message: [type(1), chunkIndex(4), data]
+      const messageSize = 1 + 4 + arrayBuffer.byteLength;
+      const messageBuffer = new ArrayBuffer(messageSize);
+      const view = new DataView(messageBuffer);
+
+      view.setUint8(0, 2); // Message type: file chunk (binary)
+      view.setUint32(1, chunkIndex, true); // Chunk index
+
+      // Copy chunk data
+      const uint8Array = new Uint8Array(messageBuffer, 5);
+      uint8Array.set(new Uint8Array(arrayBuffer));
+
+      // Wait for buffer to have space before sending
+      try {
+        await this.waitForBufferSpace();
+      } catch (error) {
+        console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
+        throw new Error(`Buffer management failed: ${error}`);
+      }
+
+      // Check if data channel is still open
+      if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+        throw new Error('Data channel closed during file transfer');
+      }
+
+      try {
+        this.dataChannel.send(messageBuffer);
+      } catch (error) {
+        console.error(`Failed to send chunk ${chunkIndex}:`, error);
+        throw new Error(`Failed to send data: ${error}`);
+      }
+      sentChunks++;
+
+      const progress = (sentChunks / totalChunks) * 100;
+      if (onProgress) onProgress(progress);
+
+      this.onFileProgress({
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        progress,
+        status: 'sending'
+      });
+
+      // Log progress for large files
+      if (sentChunks % 100 === 0 || sentChunks === totalChunks) {
+        const elapsed = Date.now() - startTime;
+        const speed = (sentChunks * chunkSize) / (elapsed / 1000) / (1024 * 1024); // MB/s
+        console.log(`Sent ${sentChunks}/${totalChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+      }
+    }
+
+    // Send file end message (JSON)
+    const endMessage: Message = {
+      type: 'file_end',
+      filename: file.name,
+      timestamp: Date.now()
+    };
+
+    await this.sendMessage(endMessage);
+
+    const totalTime = Date.now() - startTime;
+    const avgSpeed = file.size / (totalTime / 1000) / (1024 * 1024); // MB/s
+    console.log(`File transfer completed: ${file.name} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
+
+    // Update progress to completed
     this.onFileProgress({
       id: fileId,
       name: file.name,
       size: file.size,
       progress: 100,
       status: 'completed'
+    });
+  }
+
+  private async waitForBufferSpace(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const maxWaitTime = 30000; // 30 seconds max wait
+      const startTime = Date.now();
+
+      const checkBuffer = () => {
+        if (!this.dataChannel) {
+          reject(new Error('Data channel not available'));
+          return;
+        }
+
+        if (this.dataChannel.readyState !== 'open') {
+          reject(new Error('Data channel is not open'));
+          return;
+        }
+
+        if (this.dataChannel.bufferedAmount < 32 * 1024) { // Wait until buffer is less than 32KB
+          resolve();
+        } else {
+          // Check timeout
+          if (Date.now() - startTime > maxWaitTime) {
+            reject(new Error('Timeout waiting for buffer space'));
+            return;
+          }
+
+          // Wait a bit and check again
+          setTimeout(checkBuffer, 5);
+        }
+      };
+      checkBuffer();
     });
   }
 
