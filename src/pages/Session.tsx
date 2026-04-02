@@ -43,33 +43,45 @@ const Session = () => {
 
   const joinMutation = useMutation({
     mutationFn: async (code: string) => {
+      console.log('Attempting to join pairing with code:', code);
       try {
         // First try to get the pairing to see if it already exists
         const existingPairing = await api.getPairing(code);
+        console.log('Existing pairing status:', existingPairing.status);
         if (existingPairing.status === "connected") {
           // Already connected, just return the existing pairing
+          console.log('Pairing already connected, returning existing pairing');
           return existingPairing;
         } else {
           // Try to join if it's still pending
-          return await api.joinPairing(code, { 
+          console.log('Pairing is pending, attempting to join');
+          const joinedPairing = await api.joinPairing(code, { 
             identifier: deviceId, 
             label: "My Device", 
             metadata: { type: "desktop" } 
           });
+          console.log('Successfully joined pairing:', joinedPairing.status);
+          return joinedPairing;
         }
       } catch (error: any) {
+        console.log('Join failed, trying direct join:', error.message);
         // If getPairing fails, try to join directly
         if (error.message?.includes("not found")) {
-          return await api.joinPairing(code, { 
+          const joinedPairing = await api.joinPairing(code, { 
             identifier: deviceId, 
             label: "My Device", 
             metadata: { type: "desktop" } 
           });
+          console.log('Direct join successful:', joinedPairing.status);
+          return joinedPairing;
         }
         throw error;
       }
     },
-    onSuccess: (data) => setPairing(data),
+    onSuccess: (data) => {
+      console.log('Join mutation successful, pairing status:', data.status);
+      setPairing(data);
+    },
   });
 
   // Save pairing and deviceId to sessionStorage whenever they change
@@ -96,10 +108,13 @@ const Session = () => {
   // Poll for pairing status updates for the initiating device
   useEffect(() => {
     if (pairing && !joinCode && pairing.status === "pending") {
+      console.log('Starting pairing status polling for initiator');
       const pollInterval = setInterval(async () => {
         try {
           const updatedPairing = await api.getPairing(pairing.code);
+          console.log('Polled pairing status:', updatedPairing.status);
           if (updatedPairing.status !== pairing.status) {
+            console.log(`Pairing status changed from ${pairing.status} to ${updatedPairing.status}`);
             setPairing(updatedPairing);
           }
         } catch (error) {
@@ -113,6 +128,7 @@ const Session = () => {
 
   useEffect(() => {
     if (pairing?.status === "connected" && !webrtcRef.current) {
+      console.log(`Initializing WebRTC for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const isInitiator = !joinCode; // The device that initiated is the offerer
       const webrtc = new WebRTCManager(
         (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000",
@@ -120,12 +136,14 @@ const Session = () => {
         deviceId,
         isInitiator,
         (message) => {
+          console.log('WebRTC message received:', message);
           if (message.type === "peer_connected") {
             setPairing(prev => prev ? { ...prev, status: "connected" } : null);
           }
           setMessages(prev => [...prev, { ...message, sender: "peer" }]);
         },
         (state) => {
+          console.log('WebRTC connection state changed:', state);
           setConnectionState(state);
         },
         (progress) => {
