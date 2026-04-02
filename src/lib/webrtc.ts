@@ -662,6 +662,19 @@ export class WebRTCManager {
           transferKey = key;
           filename = transfer.filename || null;
           console.log(`Marked transfer ${key} as cancelled`);
+          
+          // Update UI immediately to show failed status for sending files too
+          const sendingFile = this.sendingFilesByFileId.get(fileId);
+          if (sendingFile) {
+            this.onFileProgress({
+              id: fileId,
+              name: filename || '',
+              size: sendingFile.size,
+              progress: 0,
+              status: 'failed'
+            });
+            console.log(`Sending file UI updated to failed: ${filename}`);
+          }
           break;
         }
       }
