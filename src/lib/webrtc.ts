@@ -282,10 +282,14 @@ export class WebRTCManager {
       try {
         const messages = await this.getSignalingMessages();
         if (messages.length > 0) {
-          console.log('Received signaling messages:', messages);
+          console.log(`Received ${messages.length} signaling messages`);
         }
         for (const message of messages) {
-          await this.handleSignalingMessage(message);
+          try {
+            await this.handleSignalingMessage(message);
+          } catch (err) {
+            console.error('Error handling individual signaling message:', err);
+          }
         }
       } catch (error) {
         console.error('Error polling signaling messages:', error);
@@ -294,41 +298,47 @@ export class WebRTCManager {
   }
 
   private async handleSignalingMessage(message: any): Promise<void> {
-    console.log('Handling signaling message:', message);
+    console.log('Handling signaling message type:', message.type, 'Full message:', message);
 
-    if (message.type === 'offer' && !this.isInitiator) {
-      console.log('Received offer, creating answer');
-      await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
-      const answer = await this.peerConnection!.createAnswer();
-      await this.peerConnection!.setLocalDescription(answer);
+    try {
+      if (message.type === 'offer' && !this.isInitiator) {
+        console.log('Received offer, creating answer');
+        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
+        const answer = await this.peerConnection!.createAnswer();
+        await this.peerConnection!.setLocalDescription(answer);
 
-      console.log('Sending answer:', answer);
-      await this.sendSignalingMessage({
-        type: 'answer',
-        data: answer
-      });
+        console.log('Sending answer:', answer);
+        await this.sendSignalingMessage({
+          type: 'answer',
+          data: answer
+        });
 
-      // Process any buffered ICE candidates now that remote description is set
-      await this.processPendingIceCandidates();
+        // Process any buffered ICE candidates now that remote description is set
+        await this.processPendingIceCandidates();
 
-    } else if (message.type === 'answer' && this.isInitiator) {
-      console.log('Received answer, setting remote description');
-      await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
+      } else if (message.type === 'answer' && this.isInitiator) {
+        console.log('Received answer, setting remote description');
+        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
 
-      // Process any buffered ICE candidates now that remote description is set
-      await this.processPendingIceCandidates();
+        // Process any buffered ICE candidates now that remote description is set
+        await this.processPendingIceCandidates();
 
-    } else if (message.type === 'ice_candidate') {
-      const candidate = new RTCIceCandidate(message.data);
+      } else if (message.type === 'ice_candidate') {
+        const candidate = new RTCIceCandidate(message.data);
 
-      // If remote description is not set yet, buffer the candidate
-      if (!this.peerConnection!.remoteDescription) {
-        console.log('Buffering ICE candidate until remote description is set');
-        this.pendingIceCandidates.push(candidate);
+        // If remote description is not set yet, buffer the candidate
+        if (!this.peerConnection!.remoteDescription) {
+          console.log('Buffering ICE candidate until remote description is set');
+          this.pendingIceCandidates.push(candidate);
+        } else {
+          console.log('Adding ICE candidate immediately');
+          await this.peerConnection!.addIceCandidate(candidate);
+        }
       } else {
-        console.log('Adding ICE candidate immediately');
-        await this.peerConnection!.addIceCandidate(candidate);
+        console.warn('Unknown signaling message type:', message.type);
       }
+    } catch (error) {
+      console.error('Error handling signaling message:', error, 'Message was:', message);
     }
   }
 
@@ -365,6 +375,11 @@ export class WebRTCManager {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Failed to get signaling messages:', response.status, errorText);
+      // Return empty array on 404 or 409, throw on other errors
+      if (response.status === 404 || response.status === 409) {
+        console.warn('Pairing not connected or not found yet');
+        return [];
+      }
       throw new Error('Failed to get signaling messages');
     }
     const messages = await response.json();
@@ -372,12 +387,36 @@ export class WebRTCManager {
   }
 
   async sendMessage(message: Message): Promise<void> {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      await this.waitForBufferSpace();
-      this.dataChannel.send(JSON.stringify(message));
-    } else {
-      throw new Error('Data channel not ready');
+    if (!this.dataChannel) {
+      throw new Error('Data channel not created yet');
     }
+    
+    if (this.dataChannel.readyState !== 'open') {
+      console.warn(`Data channel state is '${this.dataChannel.readyState}', waiting for it to open...`);
+      await this.waitForDataChannelOpen();
+    }
+
+    await this.waitForBufferSpace();
+    this.dataChannel.send(JSON.stringify(message));
+  }
+
+  private async waitForDataChannelOpen(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const maxWaitTime = 10000; // 10 seconds max
+      const startTime = Date.now();
+
+      const checkChannel = () => {
+        if (this.dataChannel?.readyState === 'open') {
+          console.log('Data channel is now open');
+          resolve();
+        } else if (Date.now() - startTime > maxWaitTime) {
+          reject(new Error('Data channel did not open within 10 seconds'));
+        } else {
+          setTimeout(checkChannel, 100);
+        }
+      };
+      checkChannel();
+    });
   }
 
   async sendFile(file: File, onProgress?: (progress: number) => void): Promise<void> {
