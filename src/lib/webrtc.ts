@@ -7,6 +7,7 @@ const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
 const isFileSystemAccessAvailable = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
 
 const GOOGLE_STUN_SERVER = 'stun:stun.l.google.com:19302';
+const DOWNLOADED_FILE_IDS_KEY = 'downloadedFileIds';
 
 export interface FileTransferProgress {
   id: string;
@@ -263,7 +264,13 @@ export class WebRTCManager {
     }
   }
 
-  private triggerBrowserDownload(file: File, filename: string): void {
+  private triggerBrowserDownload(fileId: string, file: File, filename: string): void {
+    const alreadyDownloaded = new Set<string>(JSON.parse(sessionStorage.getItem(DOWNLOADED_FILE_IDS_KEY) || '[]'));
+    if (alreadyDownloaded.has(fileId)) {
+      console.log(`Skipping duplicate browser download for ${fileId}`);
+      return;
+    }
+
     const url = URL.createObjectURL(file);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -273,12 +280,13 @@ export class WebRTCManager {
     anchor.click();
     document.body.removeChild(anchor);
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    alreadyDownloaded.add(fileId);
+    sessionStorage.setItem(DOWNLOADED_FILE_IDS_KEY, JSON.stringify(Array.from(alreadyDownloaded)));
   }
 
   private calculateChunkSize(fileSize: number): number {
-    return fileSize < 1024 * 1024 ? 16 * 1024 :
-      fileSize < 100 * 1024 * 1024 ? 64 * 1024 :
-      128 * 1024;
+    return 16 * 1024;
   }
 
   private async hashChunk(chunkData: Uint8Array): Promise<string> {
@@ -419,7 +427,7 @@ export class WebRTCManager {
     });
 
     if (fileData.mode === 'memory') {
-      this.triggerBrowserDownload(completedFile, filename);
+      this.triggerBrowserDownload(fileId, completedFile, filename);
     }
 
     this.receivedFiles.delete(fileId);
@@ -434,7 +442,6 @@ export class WebRTCManager {
       file_size: manifest.fileSize,
       mime_type: manifest.mimeType,
       chunk_size: manifest.chunkSize,
-      chunk_hashes: manifest.chunkHashes,
       origin_device_id: manifest.originDeviceId,
       target_peer_ids: manifest.targetPeerIds
     });
@@ -946,9 +953,7 @@ export class WebRTCManager {
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files
-      const chunkSize = file.size < 1024 * 1024 ? 16 * 1024 : // 16KB for files < 1MB
-                        file.size < 100 * 1024 * 1024 ? 64 * 1024 : // 64KB for files < 100MB
-                        128 * 1024; // 128KB for larger files
+      const chunkSize = 16 * 1024;
       const totalChunks = Math.ceil(file.size / chunkSize);
 
       console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);

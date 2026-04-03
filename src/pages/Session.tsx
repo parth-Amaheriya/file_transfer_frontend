@@ -25,9 +25,7 @@ type SwarmTransferState = {
 };
 
 const calculateSwarmChunkSize = (fileSize: number) => {
-  if (fileSize < 1024 * 1024) return 16 * 1024;
-  if (fileSize < 100 * 1024 * 1024) return 64 * 1024;
-  return 128 * 1024;
+  return 16 * 1024;
 };
 
 const bytesToHex = (bytes: ArrayBuffer) =>
@@ -43,14 +41,6 @@ const hashChunk = async (chunk: Uint8Array) => {
 const createSwarmManifest = async (file: File, originDeviceId: string, fileId: string): Promise<SwarmManifest> => {
   const chunkSize = calculateSwarmChunkSize(file.size);
   const chunkCount = Math.ceil(file.size / chunkSize);
-  const chunkHashes: string[] = [];
-
-  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
-    const start = chunkIndex * chunkSize;
-    const end = Math.min(start + chunkSize, file.size);
-    const chunk = new Uint8Array(await file.slice(start, end).arrayBuffer());
-    chunkHashes.push(await hashChunk(chunk));
-  }
 
   return {
     fileId,
@@ -59,7 +49,7 @@ const createSwarmManifest = async (file: File, originDeviceId: string, fileId: s
     mimeType: file.type || "application/octet-stream",
     chunkSize,
     chunkCount,
-    chunkHashes,
+    chunkHashes: [],
     originDeviceId,
     targetPeerIds: [],
   };
@@ -279,6 +269,7 @@ const Session = () => {
     const allRemotePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
       .filter((participant): participant is DeviceDescriptor => Boolean(participant))
       .filter((participant) => participant.identifier !== deviceId)
+      .filter((participant) => peerConnectionStatesRef.current[participant.identifier] === "connected")
       .map((participant) => participant.identifier);
 
     if (!peerSelectionInitializedRef.current) {
@@ -814,6 +805,9 @@ const Session = () => {
   const allParticipants = [pairing.initiator, ...(pairing.peers || [])].filter(
     (participant) => participant.identifier !== deviceId
   );
+  const selectablePeers = allParticipants.filter(
+    (participant) => peerConnectionStates[participant.identifier] === "connected"
+  );
   const livePeers = allParticipants.filter(
     (participant) => peerConnectionStates[participant.identifier] === "connected"
   );
@@ -897,7 +891,7 @@ const Session = () => {
 
               <TabsContent value="files">
                 <FileTransferPanel
-                  peers={allParticipants}
+                  peers={selectablePeers}
                   selectedPeerIds={selectedPeerIds}
                   onSelectionChange={setSelectedPeerIds}
                   onFileUpload={uploadFile}
