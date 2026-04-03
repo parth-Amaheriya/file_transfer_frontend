@@ -423,7 +423,7 @@ const Session = () => {
           if (message.type === "file_cancel") {
             const cancelLabel = message.content || `File cancelled: ${message.filename || message.file_name || "file"}`;
 
-            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, content: cancelLabel }]);
+            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, content: cancelLabel, timestamp: Date.now() }]);
 
             if (activeTab !== "files") {
               setUnreadTabs((prev) => new Set([...prev, "files"]));
@@ -475,7 +475,7 @@ const Session = () => {
           }
 
           if (message.type !== "request" && message.type !== "have" && message.type !== "complete" && message.type !== "file_manifest") {
-            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier }]);
+            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, timestamp: Date.now() }]);
 
             if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
               let tabToMark = "";
