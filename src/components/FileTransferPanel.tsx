@@ -2,6 +2,7 @@ import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowD
 import { useState, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import type { DeviceDescriptor } from "@/lib/api";
 
 export interface FileItem {
   id: string;
@@ -21,18 +22,21 @@ const typeIcons = {
 };
 
 interface FileTransferPanelProps {
-  onFileUpload: (file: File) => void;
+  peers: DeviceDescriptor[];
+  selectedPeerIds: string[];
+  onSelectionChange: (peerIds: string[]) => void;
+  onFileUpload: (file: File, targetPeerIds: string[]) => void;
   onCancelTransfer?: (fileId: string) => void;
   files: FileItem[];
 }
 
-const FileTransferPanel = ({ onFileUpload, onCancelTransfer, files }: FileTransferPanelProps) => {
+const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUpload, onCancelTransfer, files }: FileTransferPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (selectedFiles: FileList | null) => {
-    if (selectedFiles) {
-      Array.from(selectedFiles).forEach(file => onFileUpload(file));
+    if (selectedFiles && selectedPeerIds.length > 0) {
+      Array.from(selectedFiles).forEach(file => onFileUpload(file, selectedPeerIds));
     }
   };
 
@@ -48,6 +52,54 @@ const FileTransferPanel = ({ onFileUpload, onCancelTransfer, files }: FileTransf
 
   return (
     <div className="space-y-4">
+      <div className="surface rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Send to</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSelectionChange(peers.map((peer) => peer.identifier))}
+            className="h-8 px-2 text-xs"
+            disabled={peers.length === 0}
+          >
+            Select all
+          </Button>
+        </div>
+
+        {peers.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No other devices connected yet.</p>
+        ) : (
+          <div className="grid gap-2">
+            {peers.map((peer) => {
+              const checked = selectedPeerIds.includes(peer.identifier);
+              return (
+                <label
+                  key={peer.identifier}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm cursor-pointer hover:bg-secondary/40"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{peer.label || peer.identifier}</p>
+                    <p className="text-xs text-muted-foreground truncate">{peer.identifier}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      if (checked) {
+                        onSelectionChange(selectedPeerIds.filter((peerId) => peerId !== peer.identifier));
+                      } else {
+                        onSelectionChange([...selectedPeerIds, peer.identifier]);
+                      }
+                    }}
+                    className="h-4 w-4"
+                  />
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}

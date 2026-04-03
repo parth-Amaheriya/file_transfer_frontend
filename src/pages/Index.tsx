@@ -7,6 +7,7 @@ import BackgroundEffects from "@/components/BackgroundEffects";
 
 const Index = () => {
   const [code, setCode] = useState("");
+  const [deviceName, setDeviceName] = useState(() => sessionStorage.getItem("deviceName") || "My Device");
   const navigate = useNavigate();
 
   return (
@@ -28,11 +29,21 @@ const Index = () => {
 
         {/* Actions Card */}
         <div className="surface-elevated rounded-xl p-6 space-y-5">
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Device name</p>
+            <Input
+              value={deviceName}
+              onChange={(e) => setDeviceName(e.target.value)}
+              placeholder="My laptop"
+              className="font-medium"
+            />
+          </div>
+
           <Button
             variant="hero"
             size="lg"
             className="w-full text-base h-12"
-            onClick={() => navigate("/session")}
+            onClick={() => navigate("/session", { state: { deviceName: deviceName.trim() || "My Device" } })}
           >
             Create Session
             <ArrowRight className="h-4 w-4 ml-1" />
@@ -54,7 +65,7 @@ const Index = () => {
             />
             <Button
               variant="outline"
-              onClick={() => code.trim() && navigate("/session", { state: { joinCode: code.trim() } })}
+              onClick={() => code.trim() && navigate("/session", { state: { joinCode: code.trim(), deviceName: deviceName.trim() || "My Device" } })}
               disabled={!code.trim()}
             >
               Join

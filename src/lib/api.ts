@@ -43,6 +43,7 @@ export interface Message {
   chunk_size?: number;
   chunk_hashes?: string[];
   origin_device_id?: string;
+  target_peer_ids?: string[];
   mime_type?: string;
   timestamp?: string | number;
   sender?: "you" | "peer";

@@ -18,6 +18,7 @@ type SwarmTransferState = {
   sourceFile?: File;
   localChunks: Map<number, Uint8Array>;
   ownedChunks: Set<number>;
+  targetPeerIds: string[];
   peerChunks: Record<string, Set<number>>;
   inFlight: Record<string, Set<number>>;
   completed: boolean;
@@ -60,6 +61,7 @@ const createSwarmManifest = async (file: File, originDeviceId: string, fileId: s
     chunkCount,
     chunkHashes,
     originDeviceId,
+    targetPeerIds: [],
   };
 };
 
@@ -73,6 +75,7 @@ const Session = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const joinCode = location.state?.joinCode;
+  const initialDeviceName = location.state?.deviceName || sessionStorage.getItem("deviceName") || "My Device";
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
     // Try to restore pairing from sessionStorage on refresh
@@ -83,27 +86,30 @@ const Session = () => {
     // Restore device ID from sessionStorage
     return sessionStorage.getItem("deviceId") || Math.random().toString(36).substr(2, 9);
   });
+  const [deviceName] = useState<string>(initialDeviceName);
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
   const [activeTab, setActiveTab] = useState<string>("files");
   const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
+  const [selectedPeerIds, setSelectedPeerIds] = useState<string[]>([]);
   const webrtcManagersRef = useRef<Map<string, WebRTCManager>>(new Map<string, WebRTCManager>());
   const peerConnectionStatesRef = useRef<Record<string, RTCPeerConnectionState>>({});
   const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, RTCPeerConnectionState>>({});
   const swarmTransfersRef = useRef<Map<string, SwarmTransferState>>(new Map());
   const lastProcessedMessageIndexRef = useRef<number>(-1);
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
+  const peerSelectionInitializedRef = useRef(false);
 
-  const getConnectedPeerManagers = (): WebRTCManager[] => {
+  const getConnectedPeerManagers = (peerIds?: string[]): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())
-      .filter(([peerId]) => peerConnectionStates[peerId] === "connected")
+      .filter(([peerId]) => peerConnectionStates[peerId] === "connected" && (!peerIds || peerIds.includes(peerId)))
       .map(([, manager]) => manager);
   };
 
-  const getConnectedPeerIds = (): string[] => {
+  const getConnectedPeerIds = (peerIds?: string[]): string[] => {
     return Array.from(webrtcManagersRef.current.keys() as Iterable<string>).filter(
-      (peerId) => peerConnectionStatesRef.current[peerId] === "connected"
+      (peerId) => peerConnectionStatesRef.current[peerId] === "connected" && (!peerIds || peerIds.includes(peerId))
     );
   };
 
@@ -117,6 +123,7 @@ const Session = () => {
       manifest,
       localChunks: new Map(),
       ownedChunks: new Set(),
+      targetPeerIds: [],
       peerChunks: {},
       inFlight: {},
       completed: false,
@@ -150,7 +157,8 @@ const Session = () => {
   };
 
   const broadcastHave = async (fileId: string, chunkIndices: number[]) => {
-    const managers = getConnectedPeerManagers();
+    const transfer = swarmTransfersRef.current.get(fileId);
+    const managers = getConnectedPeerManagers(transfer?.targetPeerIds);
     await Promise.all(
       managers.map((manager) => manager.sendHave(fileId, chunkIndices).catch((error) => console.error("Failed to broadcast HAVE:", error)))
     );
@@ -162,7 +170,7 @@ const Session = () => {
       return;
     }
 
-    const connectedPeers = getConnectedPeerIds();
+    const connectedPeers = getConnectedPeerIds(transfer.targetPeerIds);
     if (connectedPeers.length === 0) {
       return;
     }
@@ -225,7 +233,7 @@ const Session = () => {
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
       identifier: deviceId, 
-      label: "My Device", 
+      label: deviceName.trim() || "My Device", 
       metadata: { type: "desktop" } 
     }),
     onSuccess: (data) => setPairing(data),
@@ -240,7 +248,7 @@ const Session = () => {
         console.log('Attempting to join pairing');
         const joinedPairing = await api.joinPairing(code, { 
           identifier: deviceId, 
-          label: "My Device", 
+          label: deviceName.trim() || "My Device", 
           metadata: { type: "desktop" } 
         });
         console.log('Successfully joined pairing:', joinedPairing.status, 'peer_count:', joinedPairing.peer_count);
@@ -264,7 +272,25 @@ const Session = () => {
       sessionStorage.removeItem("pairing");
     }
     sessionStorage.setItem("deviceId", deviceId);
-  }, [pairing, deviceId]);
+    sessionStorage.setItem("deviceName", deviceName);
+  }, [pairing, deviceId, deviceName]);
+
+  useEffect(() => {
+    const allRemotePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
+      .filter((participant): participant is DeviceDescriptor => Boolean(participant))
+      .filter((participant) => participant.identifier !== deviceId)
+      .map((participant) => participant.identifier);
+
+    if (!peerSelectionInitializedRef.current) {
+      setSelectedPeerIds(allRemotePeerIds);
+      peerSelectionInitializedRef.current = true;
+      return;
+    }
+
+    if (peerSelectionInitializedRef.current) {
+      setSelectedPeerIds((prev) => prev.filter((peerId) => allRemotePeerIds.includes(peerId)));
+    }
+  }, [pairing?.initiator, pairing?.peers, deviceId]);
 
   useEffect(() => {
     // Only initiate/join if we don't have a restored pairing
@@ -359,12 +385,22 @@ const Session = () => {
       }
 
       for (const transfer of swarmTransfersRef.current.values()) {
+        if (!transfer.targetPeerIds.includes(peerId)) {
+          continue;
+        }
+
         try {
           await manager.announceSwarmManifest(transfer.manifest);
           const ownedChunks = Array.from(transfer.ownedChunks.values());
           if (ownedChunks.length > 0) {
             await manager.sendHave(transfer.manifest.fileId, ownedChunks);
           }
+
+          setFiles((prev) => prev.map((fileItem) =>
+            fileItem.id === transfer.manifest.fileId
+              ? { ...fileItem, progress: 100, status: "completed" }
+              : fileItem
+          ));
         } catch (error) {
           console.error(`Failed to sync swarm manifest to ${peerId}:`, error);
         }
@@ -400,10 +436,12 @@ const Session = () => {
               chunkCount: Math.ceil(message.file_size / chunkSize),
               chunkHashes: message.chunk_hashes || [],
               originDeviceId: message.origin_device_id || remotePeerId,
+              targetPeerIds: message.target_peer_ids || [remotePeerId],
             };
 
             const transfer = ensureTransfer(manifest);
             transfer.manifest = manifest;
+            transfer.targetPeerIds = manifest.targetPeerIds;
             if (!transfer.peerChunks[remotePeerId]) {
               transfer.peerChunks[remotePeerId] = new Set();
             }
@@ -665,18 +703,21 @@ const Session = () => {
     setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
   };
 
-  const uploadFile = async (file: File) => {
-    const managers = getConnectedPeerManagers();
-    if (managers.length === 0) return;
+  const uploadFile = async (file: File, targetPeerIds: string[]) => {
+    const selectedTargets = targetPeerIds.length > 0 ? targetPeerIds : selectedPeerIds;
+    const connectedTargets = getConnectedPeerIds(selectedTargets);
+    const managers = getConnectedPeerManagers(connectedTargets);
 
     const fileId = Math.random().toString(36).substr(2, 9);
 
     try {
       const manifest = await createSwarmManifest(file, deviceId, fileId);
+      manifest.targetPeerIds = [deviceId, ...selectedTargets.filter((peerId) => peerId !== deviceId)];
       const transfer = ensureTransfer(manifest);
       transfer.sourceFile = file;
       transfer.manifest = manifest;
       transfer.completed = false;
+      transfer.targetPeerIds = manifest.targetPeerIds;
       transfer.ownedChunks = new Set(Array.from({ length: manifest.chunkCount }, (_, index) => index));
 
       setFiles((prev) => [
@@ -698,12 +739,14 @@ const Session = () => {
         },
       ]);
 
-      await Promise.all(managers.map(async (manager) => {
-        await manager.announceSwarmManifest(manifest);
-        await manager.sendHave(manifest.fileId, Array.from({ length: manifest.chunkCount }, (_, index) => index));
-      }));
+      if (managers.length > 0) {
+        await Promise.all(managers.map(async (manager) => {
+          await manager.announceSwarmManifest(manifest);
+          await manager.sendHave(manifest.fileId, Array.from({ length: manifest.chunkCount }, (_, index) => index));
+        }));
 
-      setFiles((prev) => prev.map((fileItem) => fileItem.id === manifest.fileId ? { ...fileItem, progress: 100, status: "completed" } : fileItem));
+        setFiles((prev) => prev.map((fileItem) => fileItem.id === manifest.fileId ? { ...fileItem, progress: 100, status: "completed" } : fileItem));
+      }
     } catch (error) {
       console.error("File upload failed:", error);
     }
@@ -744,10 +787,13 @@ const Session = () => {
     swarmTransfersRef.current.clear();
     markedFilesUnreadRef.current.clear();
     lastProcessedMessageIndexRef.current = -1;
+    setSelectedPeerIds([]);
+    peerSelectionInitializedRef.current = false;
 
     // Clear all cache and state
     sessionStorage.removeItem("pairing");
     sessionStorage.removeItem("deviceId");
+    sessionStorage.removeItem("deviceName");
     localStorage.clear(); // Clear any persistent cache
     
     // Reset state
@@ -850,7 +896,14 @@ const Session = () => {
               </TabsList>
 
               <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} onCancelTransfer={cancelFileTransfer} files={files} />
+                <FileTransferPanel
+                  peers={allParticipants}
+                  selectedPeerIds={selectedPeerIds}
+                  onSelectionChange={setSelectedPeerIds}
+                  onFileUpload={uploadFile}
+                  onCancelTransfer={cancelFileTransfer}
+                  files={files}
+                />
               </TabsContent>
 
               <TabsContent value="messages">

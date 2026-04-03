@@ -48,6 +48,7 @@ export interface SwarmManifest {
   chunkCount: number;
   chunkHashes: string[];
   originDeviceId: string;
+  targetPeerIds: string[];
 }
 
 export interface SwarmChunkRequest {
@@ -261,6 +262,18 @@ export class WebRTCManager {
     }
   }
 
+  private triggerBrowserDownload(file: File, filename: string): void {
+    const url = URL.createObjectURL(file);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   private calculateChunkSize(fileSize: number): number {
     return fileSize < 1024 * 1024 ? 16 * 1024 :
       fileSize < 100 * 1024 * 1024 ? 64 * 1024 :
@@ -404,6 +417,10 @@ export class WebRTCManager {
       relayHop: fileData.relayHop
     });
 
+    if (fileData.mode === 'memory') {
+      this.triggerBrowserDownload(completedFile, filename);
+    }
+
     this.receivedFiles.delete(fileId);
     this.receivingFilesByFileId.delete(fileId);
   }
@@ -417,7 +434,8 @@ export class WebRTCManager {
       mime_type: manifest.mimeType,
       chunk_size: manifest.chunkSize,
       chunk_hashes: manifest.chunkHashes,
-      origin_device_id: manifest.originDeviceId
+      origin_device_id: manifest.originDeviceId,
+      target_peer_ids: manifest.targetPeerIds
     });
   }
 
