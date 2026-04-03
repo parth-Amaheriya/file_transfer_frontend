@@ -50,36 +50,18 @@ const Session = () => {
     mutationFn: async (code: string) => {
       console.log('Attempting to join pairing with code:', code);
       try {
-        // First try to get the pairing to see if it already exists
-        const existingPairing = await api.getPairing(code);
-        console.log('Existing pairing status:', existingPairing.status);
-        if (existingPairing.status === "connected") {
-          // Already connected, just return the existing pairing
-          console.log('Pairing already connected, returning existing pairing');
-          return existingPairing;
-        } else {
-          // Try to join if it's still pending
-          console.log('Pairing is pending, attempting to join');
-          const joinedPairing = await api.joinPairing(code, { 
-            identifier: deviceId, 
-            label: "My Device", 
-            metadata: { type: "desktop" } 
-          });
-          console.log('Successfully joined pairing:', joinedPairing.status);
-          return joinedPairing;
-        }
+        // Always try to join directly - don't skip based on status
+        // The backend will handle it correctly even if already connected
+        console.log('Attempting to join pairing');
+        const joinedPairing = await api.joinPairing(code, { 
+          identifier: deviceId, 
+          label: "My Device", 
+          metadata: { type: "desktop" } 
+        });
+        console.log('Successfully joined pairing:', joinedPairing.status, 'peer_count:', joinedPairing.peer_count);
+        return joinedPairing;
       } catch (error: any) {
-        console.log('Join failed, trying direct join:', error.message);
-        // If getPairing fails, try to join directly
-        if (error.message?.includes("not found")) {
-          const joinedPairing = await api.joinPairing(code, { 
-            identifier: deviceId, 
-            label: "My Device", 
-            metadata: { type: "desktop" } 
-          });
-          console.log('Direct join successful:', joinedPairing.status);
-          return joinedPairing;
-        }
+        console.error('Join failed:', error.message);
         throw error;
       }
     },
@@ -193,6 +175,11 @@ const Session = () => {
         (state) => {
           console.log('WebRTC connection state changed:', state);
           setConnectionState(state);
+          // If WebRTC fails with multiple devices, allow WebSocket to take over
+          if (state === 'failed' && (pairing?.peer_count || 0) >= 1) {
+            console.log('WebRTC failed, clearing to allow WebSocket fallback');
+            webrtcRef.current = null;
+          }
         },
         (progress) => {
           console.log('File progress update:', progress);
@@ -249,9 +236,19 @@ const Session = () => {
           webrtcRef.current = null;
         }
       };
-    } else if ((pairing?.status === "active" || pairing?.status === "connected") && (pairing?.peer_count || 0) > 1 && !websocketRef.current) {
-      // For multiple devices, establish WebSocket connection for messaging
-      console.log(`Initializing WebSocket for multi-device messaging, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
+    }
+    
+    // Close WebRTC when transitioning to multi-device mode (3+ devices)
+    if ((pairing?.peer_count || 0) >= 2 && webrtcRef.current) {
+      console.log('Switching from WebRTC to WebSocket for 3+ devices');
+      webrtcRef.current.close();
+      webrtcRef.current = null;
+      setConnectionState('connecting');
+    }
+    
+    if ((pairing?.status === "active" || pairing?.status === "connected") && (pairing?.peer_count || 0) >= 2 && !websocketRef.current) {
+      // For 3+ devices (peer_count >= 2 means 3+ total), establish WebSocket connection for messaging
+      console.log(`Initializing WebSocket for multi-device messaging (3+ devices), pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const ws = api.createWebSocket(pairing.id, deviceId);
       
       ws.onopen = () => {
