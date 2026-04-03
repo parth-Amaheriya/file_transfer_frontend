@@ -129,7 +129,7 @@ const Session = () => {
         } catch (error) {
           console.error("Failed to poll peer updates:", error);
         }
-      }, 3000); // Poll every 3 seconds
+      }, 1500); // Poll every 1.5 seconds for faster disconnection detection
 
       return () => clearInterval(pollInterval);
     }
@@ -320,6 +320,7 @@ const Session = () => {
       ws.onclose = () => {
         console.log('WebSocket closed');
         websocketRef.current = null;
+        setConnectionState('failed');
       };
       
       websocketRef.current = ws;
@@ -402,14 +403,12 @@ const Session = () => {
       // Use HTTP upload for multi-device file sharing
       try {
         const formData = new FormData();
+        formData.append('device_id', deviceId);
         formData.append('file', file);
         
         const response = await fetch(`${(import.meta as any).env?.VITE_API_BASE || "http://localhost:8000"}/api/pairing/${pairing.id}/files`, {
           method: 'POST',
-          body: formData,
-          headers: {
-            'device-id': deviceId
-          }
+          body: formData
         });
         
         if (response.ok) {
