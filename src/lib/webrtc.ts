@@ -6,6 +6,8 @@ const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
 // Check if File System Access API is available
 const isFileSystemAccessAvailable = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
 
+const GOOGLE_STUN_SERVER = 'stun:stun.l.google.com:19302';
+
 export interface FileTransferProgress {
   id: string;
   name: string;
@@ -123,8 +125,7 @@ export class WebRTCManager {
     // Create peer connection
     this.peerConnection = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: GOOGLE_STUN_SERVER }
       ]
     });
 
