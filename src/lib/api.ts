@@ -38,6 +38,8 @@ export interface Message {
 export interface SignalingMessage {
   type: "offer" | "answer" | "ice_candidate";
   data: any;
+  sender_device_id: string;
+  target_device_id: string;
 }
 
 export const api = {
@@ -82,9 +84,22 @@ export const api = {
     if (!response.ok) throw new Error("Failed to send signaling message");
   },
 
-  async getSignalingMessages(pairingId: string): Promise<SignalingMessage[]> {
-    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/signaling`);
+  async getSignalingMessages(pairingId: string, deviceId: string, senderDeviceId?: string): Promise<SignalingMessage[]> {
+    const url = new URL(`${API_BASE}/api/pairing/${pairingId}/signaling`);
+    url.searchParams.set("device_id", deviceId);
+    if (senderDeviceId) {
+      url.searchParams.set("sender_device_id", senderDeviceId);
+    }
+    const response = await fetch(url.toString());
     if (!response.ok) throw new Error("Failed to get signaling messages");
+    return response.json();
+  },
+
+  async leavePairing(pairingId: string, deviceId: string): Promise<PairingCodeOut> {
+    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/leave/${deviceId}`, {
+      method: "POST",
+    });
+    if (!response.ok) throw new Error("Failed to leave pairing");
     return response.json();
   },
 

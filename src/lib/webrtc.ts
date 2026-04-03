@@ -35,6 +35,7 @@ export class WebRTCManager {
   private signalingServer: string;
   private pairingId: string;
   private deviceId: string;
+  private targetDeviceId: string;
   private isInitiator: boolean;
   private onMessage: (message: Message) => void;
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
@@ -51,6 +52,7 @@ export class WebRTCManager {
     signalingServer: string,
     pairingId: string,
     deviceId: string,
+    targetDeviceId: string,
     isInitiator: boolean,
     onMessage: (message: Message) => void,
     onConnectionStateChange: (state: RTCPeerConnectionState) => void,
@@ -59,6 +61,7 @@ export class WebRTCManager {
     this.signalingServer = signalingServer;
     this.pairingId = pairingId;
     this.deviceId = deviceId;
+    this.targetDeviceId = targetDeviceId;
     this.isInitiator = isInitiator;
     this.onMessage = onMessage;
     this.onConnectionStateChange = onConnectionStateChange;
@@ -84,7 +87,9 @@ export class WebRTCManager {
         console.log('ICE candidate generated:', event.candidate);
         this.sendSignalingMessage({
           type: 'ice_candidate',
-          data: event.candidate
+          data: event.candidate,
+          sender_device_id: this.deviceId,
+          target_device_id: this.targetDeviceId
         });
       } else {
         console.log('ICE candidate gathering complete');
@@ -519,7 +524,9 @@ export class WebRTCManager {
       console.log('Sending offer:', offer);
       await this.sendSignalingMessage({
         type: 'offer',
-        data: offer
+        data: offer,
+        sender_device_id: this.deviceId,
+        target_device_id: this.targetDeviceId
       });
     }
 
@@ -556,7 +563,9 @@ export class WebRTCManager {
         console.log('Sending answer:', answer);
         await this.sendSignalingMessage({
           type: 'answer',
-          data: answer
+          data: answer,
+          sender_device_id: this.deviceId,
+          target_device_id: this.targetDeviceId
         });
 
         // Process any buffered ICE candidates now that remote description is set
@@ -617,7 +626,7 @@ export class WebRTCManager {
   }
 
   private async getSignalingMessages(): Promise<any[]> {
-    const response = await fetch(`${this.signalingServer}/api/pairing/${this.pairingId}/signaling`);
+    const response = await fetch(`${this.signalingServer}/api/pairing/${this.pairingId}/signaling?device_id=${encodeURIComponent(this.deviceId)}&sender_device_id=${encodeURIComponent(this.targetDeviceId)}`);
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Failed to get signaling messages:', response.status, errorText);

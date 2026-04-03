@@ -1,4 +1,4 @@
-import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown, Download, X } from "lucide-react";
+import { Upload, FileImage, FileVideo, FileArchive, File, Check, ArrowUp, ArrowDown, X } from "lucide-react";
 import { useState, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,11 @@ const typeIcons = {
 
 interface FileTransferPanelProps {
   onFileUpload: (file: File) => void;
-  onFileDownload?: (filename: string) => void;
   onCancelTransfer?: (fileId: string) => void;
   files: FileItem[];
 }
 
-const FileTransferPanel = ({ onFileUpload, onFileDownload, onCancelTransfer, files }: FileTransferPanelProps) => {
+const FileTransferPanel = ({ onFileUpload, onCancelTransfer, files }: FileTransferPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,16 +97,6 @@ const FileTransferPanel = ({ onFileUpload, onFileDownload, onCancelTransfer, fil
                     title="Cancel transfer"
                   >
                     <X className="h-4 w-4" />
-                  </Button>
-                )}
-                {file.status === "completed" && file.direction === "received" && onFileDownload && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => onFileDownload(file.name)}
-                    className="h-8 w-8 p-0"
-                  >
-                    <Download className="h-4 w-4" />
                   </Button>
                 )}
                 {file.status === "completed" && file.direction !== "received" && <Check className="h-4 w-4 text-accent" />}

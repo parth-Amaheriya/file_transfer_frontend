@@ -10,7 +10,7 @@ import FileTransferPanel from "@/components/FileTransferPanel";
 import MessagingPanel from "@/components/MessagingPanel";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import { type FileItem } from "@/components/FileTransferPanel";
-import { api, type PairingCodeOut, type Message } from "@/lib/api";
+import { api, type DeviceDescriptor, type PairingCodeOut, type Message } from "@/lib/api";
 import { WebRTCManager, type FileTransferProgress } from "@/lib/webrtc";
 
 const Session = () => {
@@ -32,9 +32,16 @@ const Session = () => {
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
   const [activeTab, setActiveTab] = useState<string>("files");
   const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
-  const webrtcRef = useRef<WebRTCManager | null>(null);
+  const webrtcManagersRef = useRef<Map<string, WebRTCManager>>(new Map<string, WebRTCManager>());
+  const peerConnectionStatesRef = useRef<Record<string, RTCPeerConnectionState>>({});
   const lastProcessedMessageIndexRef = useRef<number>(-1);
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
+
+  const getConnectedPeerManagers = (): WebRTCManager[] => {
+    return Array.from(webrtcManagersRef.current.entries())
+      .filter(([peerId]) => peerConnectionStatesRef.current[peerId] === "connected")
+      .map(([, manager]) => manager);
+  };
 
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
@@ -135,29 +142,56 @@ const Session = () => {
   }, [pairing?.code, pairing?.status]);
 
   useEffect(() => {
-    // Initialize WebRTC for any peer count - Pure P2P mesh topology
-    // Each device connects directly to all other devices via WebRTC
-    const peerCount = pairing?.peer_count || 0;
-    const shouldUseWebRTC = (pairing?.status === "connected" || pairing?.status === "active") && 
-                           peerCount >= 1 && 
-                           !webrtcRef.current;
-    
-    if (shouldUseWebRTC) {
-      const isInitiator = !joinCode; // The device that initiated is the offerer
-      console.log(`Initializing WebRTC mesh for ${isInitiator ? 'initiator' : 'joiner'}, pairing ID: ${pairing.id}, device ID: ${deviceId}, peers: ${peerCount}`);
-      const webrtc = new WebRTCManager(
-        (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000",
+    if (!pairing || pairing.status === "pending") {
+      return;
+    }
+
+    const baseUrl = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+    const participants = [pairing.initiator, ...(pairing.peers || [])].filter(
+      (participant) => participant.identifier !== deviceId
+    );
+    const participantIds = new Set(participants.map((participant) => participant.identifier));
+
+    for (const [peerId, manager] of webrtcManagersRef.current.entries()) {
+      if (!participantIds.has(peerId)) {
+        manager.close();
+        webrtcManagersRef.current.delete(peerId);
+        delete peerConnectionStatesRef.current[peerId];
+      }
+    }
+
+    const updateOverallConnectionState = () => {
+      const states = Object.values(peerConnectionStatesRef.current);
+      if (states.length === 0) {
+        setConnectionState("new");
+      } else if (states.some((state) => state === "connected")) {
+        setConnectionState("connected");
+      } else if (states.some((state) => state === "connecting" || state === "new")) {
+        setConnectionState("connecting");
+      } else if (states.length > 0 && states.every((state) => state === "failed" || state === "disconnected" || state === "closed")) {
+        setConnectionState("failed");
+      }
+    };
+
+    const createPeerManager = (remotePeer: DeviceDescriptor) => {
+      const remotePeerId = remotePeer.identifier;
+      const isInitiator = deviceId.localeCompare(remotePeerId) < 0;
+
+      const manager = new WebRTCManager(
+        baseUrl,
         pairing.id,
         deviceId,
+        remotePeerId,
         isInitiator,
         (message) => {
-          console.log('WebRTC message received:', message);
-          if (message.type === "peer_connected") {
-            setPairing(prev => prev ? { ...prev, status: "connected" } : null);
-          }
-          setMessages(prev => [...prev, { ...message, sender: "peer" }]);
+          console.log(`WebRTC message received from ${remotePeerId}:`, message);
 
-          // Mark tab as unread if message is from peer
+          if (message.type === "peer_connected") {
+            setPairing((prev) => prev ? { ...prev, status: "connected" } : null);
+          }
+
+          setMessages((prev) => [...prev, { ...message, sender: "peer" }]);
+
           if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
             let tabToMark = "";
             if (message.type === "text") {
@@ -165,78 +199,107 @@ const Session = () => {
             } else if (message.type.includes("file")) {
               tabToMark = "files";
             }
-            
+
             if (tabToMark) {
-              setUnreadTabs(prev => new Set([...prev, tabToMark]));
+              setUnreadTabs((prev) => new Set([...prev, tabToMark]));
             }
           }
         },
         (state) => {
-          console.log('WebRTC connection state changed:', state);
-          setConnectionState(state);
-          // If WebRTC fails with multiple devices, allow WebSocket to take over
-          if (state === 'failed' && (pairing?.peer_count || 0) >= 1) {
-            console.log('WebRTC failed, clearing to allow WebSocket fallback');
-            webrtcRef.current = null;
+          console.log(`WebRTC connection state changed for ${remotePeerId}:`, state);
+          peerConnectionStatesRef.current[remotePeerId] = state;
+          updateOverallConnectionState();
+
+          if (state === "failed" || state === "disconnected" || state === "closed") {
+            const existing = webrtcManagersRef.current.get(remotePeerId);
+            if (existing) {
+              existing.close();
+              webrtcManagersRef.current.delete(remotePeerId);
+            }
+            delete peerConnectionStatesRef.current[remotePeerId];
+
+            api.leavePairing(pairing.id, remotePeerId)
+              .then((updatedPairing) => setPairing(updatedPairing))
+              .catch((error) => console.error(`Failed to update pairing after ${remotePeerId} disconnect:`, error));
+
+            updateOverallConnectionState();
           }
         },
         (progress) => {
-          console.log('File progress update:', progress);
-          setFiles(prev => {
-            const existingIndex = prev.findIndex(f => f.id === progress.id);
-            
+          console.log(`File progress update from ${remotePeerId}:`, progress);
+          setFiles((prev) => {
+            const existingIndex = prev.findIndex((file) => file.id === progress.id);
+
             if (existingIndex >= 0) {
-              // Update existing file
               const updated = [...prev];
               updated[existingIndex] = {
                 ...updated[existingIndex],
                 progress: progress.progress,
                 status: progress.status as any,
-                direction: progress.status === 'receiving' ? 'received' : 'sent'
+                direction: progress.status === "receiving" ? "received" : "sent",
               };
               return updated;
-            } else if (progress.status === 'receiving' || progress.status === 'sending') {
-              // Add new file if it's being received or sent
+            }
+
+            if (progress.status === "receiving" || progress.status === "sending") {
               const newFile: FileItem = {
                 id: progress.id,
                 name: progress.name,
                 size: `${(progress.size / 1024 / 1024).toFixed(1)} MB`,
                 progress: progress.progress,
                 status: progress.status as any,
-                type: progress.name.includes('.') 
-                  ? progress.name.endsWith('.jpg') || progress.name.endsWith('.png') || progress.name.endsWith('.gif') ? 'image'
-                  : progress.name.endsWith('.mp4') || progress.name.endsWith('.avi') ? 'video'
-                  : progress.name.endsWith('.zip') || progress.name.endsWith('.rar') ? 'archive'
-                  : 'other'
-                  : 'other',
-                direction: progress.status === 'receiving' ? 'received' : 'sent'
+                type: progress.name.includes(".")
+                  ? progress.name.endsWith(".jpg") || progress.name.endsWith(".png") || progress.name.endsWith(".gif")
+                    ? "image"
+                    : progress.name.endsWith(".mp4") || progress.name.endsWith(".avi")
+                      ? "video"
+                      : progress.name.endsWith(".zip") || progress.name.endsWith(".rar")
+                        ? "archive"
+                        : "other"
+                  : "other",
+                direction: progress.status === "receiving" ? "received" : "sent",
               };
-              
-              // Mark files tab as unread only if receiving and not already marked
-              if (progress.status === 'receiving' && !markedFilesUnreadRef.current.has(progress.id)) {
+
+              if (progress.status === "receiving" && !markedFilesUnreadRef.current.has(progress.id)) {
                 markedFilesUnreadRef.current.add(progress.id);
-                setUnreadTabs(prev => new Set([...prev, 'files']));
+                setUnreadTabs((prev) => new Set([...prev, "files"]));
               }
-              
+
               return [...prev, newFile];
             }
-            
+
             return prev;
           });
         }
       );
 
-      webrtcRef.current = webrtc;
-      webrtc.initialize().catch(console.error);
+      webrtcManagersRef.current.set(remotePeerId, manager);
+      peerConnectionStatesRef.current[remotePeerId] = "new";
+      manager.initialize().catch((error) => {
+        console.error(`Failed to initialize peer connection with ${remotePeerId}:`, error);
+        peerConnectionStatesRef.current[remotePeerId] = "failed";
+        updateOverallConnectionState();
+      });
+    };
 
-      return () => {
-        if (webrtcRef.current) {
-          webrtcRef.current.close();
-          webrtcRef.current = null;
+    participants.forEach((participant) => {
+      if (!webrtcManagersRef.current.has(participant.identifier)) {
+        createPeerManager(participant);
+      }
+    });
+
+    updateOverallConnectionState();
+
+    return () => {
+      for (const [peerId, manager] of webrtcManagersRef.current.entries()) {
+        if (!participantIds.has(peerId)) {
+          manager.close();
+          webrtcManagersRef.current.delete(peerId);
+          delete peerConnectionStatesRef.current[peerId];
         }
-      };
-    }
-  }, [pairing?.status, pairing?.id, pairing?.peer_count, deviceId, joinCode]);
+      }
+    };
+  }, [pairing?.status, pairing?.id, pairing?.peers, pairing?.initiator, deviceId]);
 
   // Watch for new messages from peer and mark tabs as unread
   useEffect(() => {
@@ -268,27 +331,35 @@ const Session = () => {
   }, [messages, activeTab]);
 
   const sendMessage = (content: string) => {
-    if (webrtcRef.current) {
-      const message: Message = { type: "text", content, sender: "you" };
-      webrtcRef.current.sendMessage(message);
-      setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
-    }
+    const managers = getConnectedPeerManagers();
+    if (managers.length === 0) return;
+
+    const message: Message = { type: "text", content, sender: "you" };
+    managers.forEach((manager) => {
+      manager.sendMessage(message).catch((error) => console.error("Failed to send message:", error));
+    });
+    setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
   };
 
   const sendCode = (code: string, title: string) => {
-    if (webrtcRef.current) {
-      const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
-      webrtcRef.current.sendMessage(message);
-      setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
-    }
+    const managers = getConnectedPeerManagers();
+    if (managers.length === 0) return;
+
+    const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
+    managers.forEach((manager) => {
+      manager.sendMessage(message).catch((error) => console.error("Failed to send code:", error));
+    });
+    setMessages(prev => [...prev, { ...message, timestamp: Date.now() }]);
   };
 
   const uploadFile = async (file: File) => {
-    if (webrtcRef.current) {
-      // Use WebRTC P2P for file transfer (works for any number of devices)
+    const managers = getConnectedPeerManagers();
+    if (managers.length === 0) return;
+
+    // Broadcast the file to every live peer manager.
+    for (const manager of managers) {
       try {
-        console.log(`Sending file via WebRTC P2P: ${file.name}`);
-        await webrtcRef.current.sendFile(file);
+        await manager.sendFile(file);
       } catch (error) {
         console.error("File upload failed:", error);
       }
@@ -296,8 +367,8 @@ const Session = () => {
   };
 
   const cancelFileTransfer = (fileId: string) => {
-    if (webrtcRef.current) {
-      webrtcRef.current.cancelFileTransfer(fileId);
+    for (const manager of Array.from(webrtcManagersRef.current.values()) as WebRTCManager[]) {
+      manager.cancelFileTransfer(fileId);
     }
   };
 
@@ -307,10 +378,15 @@ const Session = () => {
   };
 
   const handleDisconnect = () => {
-    // Close WebRTC connection
-    if (webrtcRef.current) {
-      webrtcRef.current.close();
-      webrtcRef.current = null;
+    // Close all WebRTC connections
+    for (const manager of webrtcManagersRef.current.values()) {
+      manager.close();
+    }
+    webrtcManagersRef.current.clear();
+    peerConnectionStatesRef.current = {};
+
+    if (pairing) {
+      api.leavePairing(pairing.id, deviceId).catch(() => undefined);
     }
 
     // Clear all cache and state
@@ -402,7 +478,7 @@ const Session = () => {
               </TabsList>
 
               <TabsContent value="files">
-                <FileTransferPanel onFileUpload={uploadFile} onFileDownload={downloadFile} onCancelTransfer={cancelFileTransfer} files={files} />
+                <FileTransferPanel onFileUpload={uploadFile} onCancelTransfer={cancelFileTransfer} files={files} />
               </TabsContent>
 
               <TabsContent value="messages">
