@@ -256,6 +256,7 @@ const Session = () => {
       
       ws.onopen = () => {
         console.log('WebSocket connected for multi-device messaging');
+        setConnectionState("connected");
       };
       
       ws.onmessage = (event) => {

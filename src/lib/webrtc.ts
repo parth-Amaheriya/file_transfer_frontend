@@ -127,13 +127,13 @@ export class WebRTCManager {
     // Start signaling
     this.startSignaling();
 
-    // Set connection timeout (30 seconds)
+    // Set connection timeout (60 seconds for more reliable connections)
     this.connectionTimeout = window.setTimeout(() => {
       if (this.peerConnection?.connectionState !== 'connected') {
-        console.error('WebRTC connection timeout - no connection established within 30 seconds');
+        console.error('WebRTC connection timeout - no connection established within 60 seconds');
         this.onConnectionStateChange('failed');
       }
-    }, 30000);
+    }, 60000);
   }
 
   private setupDataChannel(): void {
