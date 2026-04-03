@@ -30,6 +30,8 @@ interface ReceivedFileData {
 export class WebRTCManager {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
+  private dataChannelPromise: Promise<RTCDataChannel>;
+  private dataChannelResolver: (dc: RTCDataChannel) => void;
   private signalingServer: string;
   private pairingId: string;
   private deviceId: string;
@@ -61,6 +63,7 @@ export class WebRTCManager {
     this.onMessage = onMessage;
     this.onConnectionStateChange = onConnectionStateChange;
     this.onFileProgress = onFileProgress;
+    this.dataChannelPromise = new Promise(resolve => this.dataChannelResolver = resolve);
   }
 
   async initialize(): Promise<void> {
@@ -138,6 +141,8 @@ export class WebRTCManager {
 
   private setupDataChannel(): void {
     if (!this.dataChannel) return;
+
+    this.dataChannelResolver(this.dataChannel); // Resolve the promise
 
     this.dataChannel.binaryType = 'arraybuffer'; // Enable binary data transfer
 
@@ -629,7 +634,8 @@ export class WebRTCManager {
 
   async sendMessage(message: Message): Promise<void> {
     if (!this.dataChannel) {
-      throw new Error('Data channel not created yet');
+      console.log('Data channel not created yet, waiting...');
+      this.dataChannel = await this.dataChannelPromise;
     }
     
     if (this.dataChannel.readyState !== 'open') {

@@ -249,7 +249,7 @@ const Session = () => {
           webrtcRef.current = null;
         }
       };
-    } else if ((pairing?.status === "active") && (pairing?.peer_count || 0) > 1 && !websocketRef.current) {
+    } else if ((pairing?.status === "active" || pairing?.status === "connected") && (pairing?.peer_count || 0) > 1 && !websocketRef.current) {
       // For multiple devices, establish WebSocket connection for messaging
       console.log(`Initializing WebSocket for multi-device messaging, pairing ID: ${pairing.id}, device ID: ${deviceId}`);
       const ws = api.createWebSocket(pairing.id, deviceId);
