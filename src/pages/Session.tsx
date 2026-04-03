@@ -19,13 +19,14 @@ type SwarmTransferState = {
   localChunks: Map<number, Uint8Array>;
   ownedChunks: Set<number>;
   targetPeerIds: string[];
+  peerHasAll: Record<string, boolean>;
   peerChunks: Record<string, Set<number>>;
   inFlight: Record<string, Set<number>>;
   completed: boolean;
 };
 
 const calculateSwarmChunkSize = (fileSize: number) => {
-  return 16 * 1024;
+  return 32 * 1024;
 };
 
 const bytesToHex = (bytes: ArrayBuffer) =>
@@ -114,6 +115,7 @@ const Session = () => {
       localChunks: new Map(),
       ownedChunks: new Set(),
       targetPeerIds: [],
+      peerHasAll: {},
       peerChunks: {},
       inFlight: {},
       completed: false,
@@ -178,7 +180,7 @@ const Session = () => {
     for (const chunkIndex of missingChunks) {
       let count = 0;
       for (const peerId of connectedPeers) {
-        if (transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) {
+        if (transfer.peerHasAll[peerId] || transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) {
           count += 1;
         }
       }
@@ -197,7 +199,7 @@ const Session = () => {
 
     for (const chunkIndex of orderedChunks) {
       const candidatePeers = connectedPeers.filter(
-        (peerId) => (transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) && outstandingByPeer(peerId) < 2
+        (peerId) => (transfer.peerHasAll[peerId] || transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) && outstandingByPeer(peerId) < 2
       );
 
       if (candidatePeers.length === 0) {
@@ -282,6 +284,16 @@ const Session = () => {
       setSelectedPeerIds((prev) => prev.filter((peerId) => allRemotePeerIds.includes(peerId)));
     }
   }, [pairing?.initiator, pairing?.peers, deviceId]);
+
+  useEffect(() => {
+    const livePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
+      .filter((participant): participant is DeviceDescriptor => Boolean(participant))
+      .filter((participant) => participant.identifier !== deviceId)
+      .filter((participant) => peerConnectionStates[participant.identifier] === "connected")
+      .map((participant) => participant.identifier);
+
+    setSelectedPeerIds((prev) => prev.filter((peerId) => livePeerIds.includes(peerId)));
+  }, [pairing?.initiator, pairing?.peers, peerConnectionStates, deviceId]);
 
   useEffect(() => {
     // Only initiate/join if we don't have a restored pairing
@@ -382,10 +394,6 @@ const Session = () => {
 
         try {
           await manager.announceSwarmManifest(transfer.manifest);
-          const ownedChunks = Array.from(transfer.ownedChunks.values());
-          if (ownedChunks.length > 0) {
-            await manager.sendHave(transfer.manifest.fileId, ownedChunks);
-          }
 
           setFiles((prev) => prev.map((fileItem) =>
             fileItem.id === transfer.manifest.fileId
@@ -433,12 +441,9 @@ const Session = () => {
             const transfer = ensureTransfer(manifest);
             transfer.manifest = manifest;
             transfer.targetPeerIds = manifest.targetPeerIds;
+            transfer.peerHasAll[remotePeerId] = manifest.originDeviceId === remotePeerId;
             if (!transfer.peerChunks[remotePeerId]) {
               transfer.peerChunks[remotePeerId] = new Set();
-            }
-
-            if (manifest.originDeviceId === remotePeerId) {
-              transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: manifest.chunkCount }, (_, index) => index));
             }
 
             void requestNextChunks(manifest.fileId);
@@ -454,7 +459,8 @@ const Session = () => {
           if (message.type === "complete" && message.file_id) {
             const transfer = swarmTransfersRef.current.get(message.file_id);
             if (transfer) {
-              transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: transfer.manifest.chunkCount }, (_, index) => index));
+              transfer.peerHasAll[remotePeerId] = true;
+              transfer.peerChunks[remotePeerId] = new Set();
             }
             void requestNextChunks(message.file_id);
             return;
@@ -498,6 +504,7 @@ const Session = () => {
 
             for (const transfer of swarmTransfersRef.current.values()) {
               delete transfer.peerChunks[remotePeerId];
+              delete transfer.peerHasAll[remotePeerId];
               delete transfer.inFlight[remotePeerId];
             }
 
@@ -709,6 +716,7 @@ const Session = () => {
       transfer.manifest = manifest;
       transfer.completed = false;
       transfer.targetPeerIds = manifest.targetPeerIds;
+      transfer.peerHasAll[deviceId] = true;
       transfer.ownedChunks = new Set(Array.from({ length: manifest.chunkCount }, (_, index) => index));
 
       setFiles((prev) => [
@@ -733,7 +741,6 @@ const Session = () => {
       if (managers.length > 0) {
         await Promise.all(managers.map(async (manager) => {
           await manager.announceSwarmManifest(manifest);
-          await manager.sendHave(manifest.fileId, Array.from({ length: manifest.chunkCount }, (_, index) => index));
         }));
 
         setFiles((prev) => prev.map((fileItem) => fileItem.id === manifest.fileId ? { ...fileItem, progress: 100, status: "completed" } : fileItem));

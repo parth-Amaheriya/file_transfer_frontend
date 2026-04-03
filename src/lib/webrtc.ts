@@ -265,7 +265,7 @@ export class WebRTCManager {
   }
 
   private triggerBrowserDownload(fileId: string, file: File, filename: string): void {
-    const alreadyDownloaded = new Set<string>(JSON.parse(sessionStorage.getItem(DOWNLOADED_FILE_IDS_KEY) || '[]'));
+    const alreadyDownloaded = new Set<string>(JSON.parse(localStorage.getItem(DOWNLOADED_FILE_IDS_KEY) || '[]'));
     if (alreadyDownloaded.has(fileId)) {
       console.log(`Skipping duplicate browser download for ${fileId}`);
       return;
@@ -282,7 +282,7 @@ export class WebRTCManager {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 
     alreadyDownloaded.add(fileId);
-    sessionStorage.setItem(DOWNLOADED_FILE_IDS_KEY, JSON.stringify(Array.from(alreadyDownloaded)));
+    localStorage.setItem(DOWNLOADED_FILE_IDS_KEY, JSON.stringify(Array.from(alreadyDownloaded)));
   }
 
   private calculateChunkSize(fileSize: number): number {
