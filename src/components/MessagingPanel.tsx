@@ -36,9 +36,11 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
             return (
               <div key={index} className="flex justify-center animate-fade-in">
                 <div className="max-w-[85%] rounded-full border border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
-                  <span className="block text-[10px] uppercase tracking-widest text-muted-foreground/80 mb-1">
-                    {msg.senderName || (msg.sender === "you" ? "You" : "Peer")}
-                  </span>
+                  {msg.sender !== "you" && (
+                    <span className="block text-[10px] uppercase tracking-widest text-muted-foreground/80 mb-1">
+                      {msg.senderName || "Peer"}
+                    </span>
+                  )}
                   <span>{msg.content || `File cancelled${msg.filename ? `: ${msg.filename}` : ""}`}</span>
                 </div>
               </div>
@@ -56,11 +58,11 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
                   ? "bg-primary text-primary-foreground rounded-br-md" 
                   : "bg-secondary text-secondary-foreground rounded-bl-md"
               }`}>
-                <p className={`text-[10px] uppercase tracking-widest mb-1 ${
-                  msg.sender === "you" ? "text-primary-foreground/60" : "text-secondary-foreground/60"
-                }`}>
-                  {msg.senderName || (msg.sender === "you" ? "You" : "Peer")}
-                </p>
+                {msg.sender !== "you" && (
+                  <p className="text-[10px] uppercase tracking-widest mb-1 text-secondary-foreground/60">
+                    {msg.senderName || "Peer"}
+                  </p>
+                )}
                 <p className="text-sm leading-relaxed">{msg.content}</p>
                 <p className={`text-[10px] mt-1 ${
                   msg.sender === "you" 
