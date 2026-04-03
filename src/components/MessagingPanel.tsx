@@ -29,68 +29,111 @@ const MessagingPanel = ({ messages, onSendMessage }: MessagingPanelProps) => {
   };
 
   return (
-    <div className="flex flex-col h-[400px]">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-3 p-1">
-        {visibleMessages.map((msg, index) => {
-          if (msg.type === "file_cancel") {
-            return (
-              <div key={index} className="flex justify-center animate-fade-in">
-                <div className="max-w-[85%] rounded-full border border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
-                  {msg.sender !== "you" && (
-                    <span className="block text-[10px] uppercase tracking-widest text-muted-foreground/80 mb-1">
-                      {msg.senderName || "Peer"}
-                    </span>
-                  )}
-                  <span>{msg.content || `File cancelled${msg.filename ? `: ${msg.filename}` : ""}`}</span>
-                </div>
-              </div>
-            );
-          }
+  <div className="flex flex-col h-[420px] rounded-2xl border bg-background shadow-sm">
+    
+    {/* Messages */}
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto px-4 py-3 space-y-4 scrollbar-thin"
+    >
+      {visibleMessages.length === 0 && (
+        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          No messages yet
+        </div>
+      )}
 
-          if (msg.isCode) {
-            return null;
-          }
-
+      {visibleMessages.map((msg, index) => {
+        // 🔴 File cancel message (system style)
+        if (msg.type === "file_cancel") {
           return (
-            <div key={index} className={`flex ${msg.sender === "you" ? "justify-end" : "justify-start"} animate-fade-in`}>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
-                msg.sender === "you" 
-                  ? "bg-primary text-primary-foreground rounded-br-md" 
-                  : "bg-secondary text-secondary-foreground rounded-bl-md"
-              }`}>
+            <div key={index} className="flex justify-center">
+              <div className="px-4 py-1.5 text-xs rounded-full bg-muted text-muted-foreground border">
                 {msg.sender !== "you" && (
-                  <p className="text-[10px] uppercase tracking-widest mb-1 text-secondary-foreground/60">
-                    {msg.senderName || "Peer"}
-                  </p>
+                  <span className="mr-1 font-medium">
+                    {msg.senderName || "Peer"}:
+                  </span>
                 )}
-                <p className="text-sm leading-relaxed">{msg.content}</p>
-                <p className={`text-[10px] mt-1 ${
-                  msg.sender === "you" 
-                    ? "text-primary-foreground/60" 
-                    : "text-secondary-foreground/60"
-                }`}>
-                  {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
-                </p>
+                {msg.content ||
+                  `File cancelled${msg.filename ? `: ${msg.filename}` : ""}`}
               </div>
             </div>
           );
-        })}
-      </div>
+        }
 
-      <div className="flex gap-2 mt-4">
+        if (msg.isCode) return null;
+
+        const isYou = msg.sender === "you";
+
+        return (
+          <div
+            key={index}
+            className={`flex ${isYou ? "justify-end" : "justify-start"}`}
+          >
+            <div className="flex flex-col max-w-[75%]">
+              
+              {/* Sender name */}
+              {!isYou && (
+                <span className="text-[11px] mb-1 px-1 text-muted-foreground">
+                  {msg.senderName || "Peer"}
+                </span>
+              )}
+
+              {/* Message bubble */}
+              <div
+                className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm transition-all
+                  ${
+                    isYou
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-muted text-foreground rounded-bl-sm"
+                  }
+                `}
+              >
+                {msg.content}
+              </div>
+
+              {/* Timestamp */}
+              <span
+                className={`text-[10px] mt-1 px-1 ${
+                  isYou
+                    ? "text-right text-muted-foreground"
+                    : "text-left text-muted-foreground"
+                }`}
+              >
+                {msg.timestamp
+                  ? new Date(msg.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : ""}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Input Area */}
+    <div className="border-t px-3 py-2 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center gap-2">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
           placeholder="Type a message..."
-          className="flex-1"
+          className="flex-1 rounded-full px-4"
         />
-        <Button onClick={send} size="icon">
+
+        <Button
+          onClick={send}
+          size="icon"
+          className="rounded-full shadow-sm"
+        >
           <Send className="h-4 w-4" />
         </Button>
       </div>
     </div>
-  );
+  </div>
+);
 };
 
 export default MessagingPanel;
