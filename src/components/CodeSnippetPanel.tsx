@@ -11,6 +11,7 @@ interface CodeSnippet {
   code: string;
   language: string;
   sender: "you" | "peer";
+  senderName?: string;
   title?: string;
 }
 
@@ -57,6 +58,7 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
       code: msg.content!,
       language: detectLanguage(msg.content!),
       sender: msg.sender === "you" ? "you" : "peer",
+      senderName: msg.senderName,
       title: msg.codeTitle,
     }));
 
@@ -104,6 +106,9 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
                         <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         <div className="flex-1">
                           <p className="text-sm font-medium text-foreground">{snippet.title || "Untitled Snippet"}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {snippet.senderName || (snippet.sender === "you" ? "You" : "Peer")}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {snippet.language} • {snippet.code.split("\n").length} lines • {snippet.sender === "you" ? "You" : "Peer"}
                           </p>

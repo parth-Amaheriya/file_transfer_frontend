@@ -26,7 +26,7 @@ type SwarmTransferState = {
 };
 
 const calculateSwarmChunkSize = (fileSize: number) => {
-  return 32 * 1024;
+  return 64 * 1024;
 };
 
 const bytesToHex = (bytes: ArrayBuffer) =>
@@ -91,6 +91,7 @@ const Session = () => {
   const lastProcessedMessageIndexRef = useRef<number>(-1);
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
   const peerSelectionInitializedRef = useRef(false);
+  const peerSelectionTouchedRef = useRef(false);
 
   const getConnectedPeerManagers = (peerIds?: string[]): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())
@@ -268,31 +269,26 @@ const Session = () => {
   }, [pairing, deviceId, deviceName]);
 
   useEffect(() => {
-    const allRemotePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
-      .filter((participant): participant is DeviceDescriptor => Boolean(participant))
-      .filter((participant) => participant.identifier !== deviceId)
-      .filter((participant) => peerConnectionStatesRef.current[participant.identifier] === "connected")
-      .map((participant) => participant.identifier);
-
-    if (!peerSelectionInitializedRef.current) {
-      setSelectedPeerIds(allRemotePeerIds);
-      peerSelectionInitializedRef.current = true;
-      return;
-    }
-
-    if (peerSelectionInitializedRef.current) {
-      setSelectedPeerIds((prev) => prev.filter((peerId) => allRemotePeerIds.includes(peerId)));
-    }
-  }, [pairing?.initiator, pairing?.peers, deviceId]);
-
-  useEffect(() => {
-    const livePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
+    const liveRemotePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
       .filter((participant): participant is DeviceDescriptor => Boolean(participant))
       .filter((participant) => participant.identifier !== deviceId)
       .filter((participant) => peerConnectionStates[participant.identifier] === "connected")
       .map((participant) => participant.identifier);
 
-    setSelectedPeerIds((prev) => prev.filter((peerId) => livePeerIds.includes(peerId)));
+    if (!peerSelectionInitializedRef.current) {
+      if (liveRemotePeerIds.length > 0) {
+        setSelectedPeerIds(liveRemotePeerIds);
+        peerSelectionInitializedRef.current = true;
+      }
+      return;
+    }
+
+    if (!peerSelectionTouchedRef.current) {
+      setSelectedPeerIds(liveRemotePeerIds);
+      return;
+    }
+
+    setSelectedPeerIds((prev) => prev.filter((peerId) => liveRemotePeerIds.includes(peerId)));
   }, [pairing?.initiator, pairing?.peers, peerConnectionStates, deviceId]);
 
   useEffect(() => {
@@ -424,6 +420,18 @@ const Session = () => {
             return;
           }
 
+          if (message.type === "file_cancel") {
+            const cancelLabel = message.content || `File cancelled: ${message.filename || message.file_name || "file"}`;
+
+            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, content: cancelLabel }]);
+
+            if (activeTab !== "files") {
+              setUnreadTabs((prev) => new Set([...prev, "files"]));
+            }
+
+            return;
+          }
+
           if (message.type === "file_manifest" && message.file_id && message.filename && message.file_size) {
             const chunkSize = message.chunk_size || calculateSwarmChunkSize(message.file_size);
             const manifest: SwarmManifest = {
@@ -466,8 +474,8 @@ const Session = () => {
             return;
           }
 
-          if (message.type !== "request" && message.type !== "have" && message.type !== "complete" && message.type !== "file_manifest" && message.type !== "file_cancel") {
-            setMessages((prev) => [...prev, { ...message, sender: "peer" }]);
+          if (message.type !== "request" && message.type !== "have" && message.type !== "complete" && message.type !== "file_manifest") {
+            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier }]);
 
             if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
               let tabToMark = "";
@@ -551,6 +559,7 @@ const Session = () => {
                         : "other"
                   : "other",
                 direction: progress.status === "receiving" ? "received" : "sent",
+                senderName: progress.status === "receiving" ? (remotePeer.label || remotePeer.identifier) : (deviceName.trim() || "You"),
               };
 
               if (progress.status === "receiving" && !markedFilesUnreadRef.current.has(progress.id)) {
@@ -683,7 +692,7 @@ const Session = () => {
     const managers = getConnectedPeerManagers();
     if (managers.length === 0) return;
 
-    const message: Message = { type: "text", content, sender: "you" };
+    const message: Message = { type: "text", content, sender: "you", senderName: deviceName.trim() || "You" };
     managers.forEach((manager) => {
       manager.sendMessage(message).catch((error) => console.error("Failed to send message:", error));
     });
@@ -694,7 +703,7 @@ const Session = () => {
     const managers = getConnectedPeerManagers();
     if (managers.length === 0) return;
 
-    const message: Message = { type: "text", content: code, sender: "you", isCode: true, codeTitle: title };
+    const message: Message = { type: "text", content: code, sender: "you", senderName: deviceName.trim() || "You", isCode: true, codeTitle: title };
     managers.forEach((manager) => {
       manager.sendMessage(message).catch((error) => console.error("Failed to send code:", error));
     });
@@ -735,6 +744,7 @@ const Session = () => {
                 ? "archive"
                 : "other",
           direction: "sent",
+              senderName: deviceName.trim() || "You",
         },
       ]);
 
@@ -757,6 +767,7 @@ const Session = () => {
         type: "file_cancel",
         filename: swarmTransfer.manifest.filename,
         file_id: fileId,
+        content: `File cancelled: ${swarmTransfer.manifest.filename}`,
         timestamp: Date.now(),
       };
 
@@ -765,7 +776,8 @@ const Session = () => {
       }
 
       swarmTransfersRef.current.delete(fileId);
-      setFiles((prev) => prev.map((file) => file.id === fileId ? { ...file, status: "failed", progress: 0 } : file));
+      setFiles((prev) => prev.map((file) => file.id === fileId ? { ...file, status: "cancelled", progress: 0 } : file));
+      setMessages((prev) => [...prev, { ...cancelMessage, sender: "you" }]);
       return;
     }
 
@@ -800,6 +812,7 @@ const Session = () => {
     setFiles([]);
     setUnreadTabs(new Set());
     setConnectionState("new");
+    peerSelectionTouchedRef.current = false;
 
     // Navigate back to home
     navigate("/");
@@ -900,7 +913,10 @@ const Session = () => {
                 <FileTransferPanel
                   peers={selectablePeers}
                   selectedPeerIds={selectedPeerIds}
-                  onSelectionChange={setSelectedPeerIds}
+                  onSelectionChange={(peerIds) => {
+                    peerSelectionTouchedRef.current = true;
+                    setSelectedPeerIds(peerIds);
+                  }}
                   onFileUpload={uploadFile}
                   onCancelTransfer={cancelFileTransfer}
                   files={files}

@@ -47,6 +47,7 @@ export interface Message {
   mime_type?: string;
   timestamp?: string | number;
   sender?: "you" | "peer";
+  senderName?: string;
   isCode?: boolean;
   codeTitle?: string;
   relay_hop?: number;

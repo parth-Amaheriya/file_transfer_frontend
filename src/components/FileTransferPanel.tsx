@@ -9,9 +9,10 @@ export interface FileItem {
   name: string;
   size: string;
   progress: number;
-  status: "uploading" | "sending" | "receiving" | "completed" | "failed";
+  status: "uploading" | "sending" | "receiving" | "completed" | "failed" | "cancelled";
   type: "image" | "video" | "archive" | "other";
   direction?: "sent" | "received";
+  senderName?: string;
 }
 
 const typeIcons = {
@@ -91,7 +92,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                         onSelectionChange([...selectedPeerIds, peer.identifier]);
                       }
                     }}
-                    className="h-4 w-4"
+                    className="h-4 w-4 accent-blue-500 cursor-pointer"
                   />
                 </label>
               );
@@ -131,8 +132,11 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{file.name}</p>
+                {file.senderName && (
+                  <p className="text-[11px] text-muted-foreground truncate">{file.senderName}</p>
+                )}
                 <p className="text-xs text-muted-foreground">{file.size}</p>
-                {file.status !== "completed" && file.status !== "failed" && (
+                {file.status !== "completed" && file.status !== "failed" && file.status !== "cancelled" && (
                   <Progress value={file.progress} className="mt-2 h-1" />
                 )}
               </div>
@@ -153,6 +157,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                 )}
                 {file.status === "completed" && file.direction !== "received" && <Check className="h-4 w-4 text-accent" />}
                 {file.status === "failed" && <span className="text-xs text-destructive">Failed</span>}
+                {file.status === "cancelled" && <span className="text-xs text-amber-600">Cancelled</span>}
               </div>
             </div>
           );

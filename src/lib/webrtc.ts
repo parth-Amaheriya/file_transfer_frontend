@@ -14,7 +14,7 @@ export interface FileTransferProgress {
   name: string;
   size: number;
   progress: number;
-  status: 'sending' | 'receiving' | 'completed' | 'failed';
+  status: 'sending' | 'receiving' | 'completed' | 'failed' | 'cancelled';
 }
 
 interface ReceivedFileData {
@@ -563,13 +563,13 @@ export class WebRTCManager {
             // Mark file as cancelled
             fileData.cancelled = true;
 
-            // Update progress to failed
+            // Update progress to cancelled
             this.onFileProgress({
               id: fileData.fileId,
               name: message.filename,
               size: fileData.totalSize,
               progress: 0,
-              status: 'failed'
+              status: 'cancelled'
             });
 
             this.receivedFiles.delete(fileData.fileId);
@@ -592,7 +592,7 @@ export class WebRTCManager {
                 fileIdToCleanup = transfer.fileId || null;
                 foundTransfer = true;
                 
-                // Update UI progress to failed immediately
+                // Update UI progress to cancelled immediately
                 const sendingFile = this.sendingFilesByFileId.get(transfer.fileId || '');
                 if (sendingFile && transfer.fileId) {
                   this.onFileProgress({
@@ -600,7 +600,7 @@ export class WebRTCManager {
                     name: message.filename,
                     size: sendingFile.size,
                     progress: 0,
-                    status: 'failed'
+                    status: 'cancelled'
                   });
                   
                   // Clean up the sending file mapping
@@ -856,13 +856,13 @@ export class WebRTCManager {
         console.log(`Cancelling reception of file: ${receivingFilename}`);
         fileData.cancelled = true;
         
-        // Update UI immediately to show failed status
+        // Update UI immediately to show cancelled status
         this.onFileProgress({
           id: fileId,
           name: receivingFilename,
           size: fileData.totalSize,
           progress: (fileData.chunks?.size || 0) / fileData.expectedChunks * 100,
-          status: 'failed'
+          status: 'cancelled'
         });
         
         console.log(`File marked as cancelled: ${receivingFilename}`);
@@ -875,7 +875,7 @@ export class WebRTCManager {
           transferKey = key;
           filename = transfer.filename || null;
           
-          // Update UI immediately to show failed status for sending file
+          // Update UI immediately to show cancelled status for sending file
           const sendingFile = this.sendingFilesByFileId.get(fileId);
           if (sendingFile) {
             this.onFileProgress({
@@ -883,7 +883,7 @@ export class WebRTCManager {
               name: sendingFile.filename,
               size: sendingFile.size,
               progress: 0, // We don't know current progress, so show 0
-              status: 'failed'
+              status: 'cancelled'
             });
             
             // Clean up the sending file mapping
@@ -994,7 +994,7 @@ export class WebRTCManager {
             name: file.name,
             size: file.size,
             progress: (sentChunks / totalChunks) * 100,
-            status: 'failed'
+            status: 'cancelled'
           });
           break; // Exit the loop gracefully instead of throwing
         }
