@@ -92,7 +92,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                         onSelectionChange([...selectedPeerIds, peer.identifier]);
                       }
                     }}
-                    className="h-4 w-4 accent-blue-500 cursor-pointer"
+                    className="h-4 w-4 accent-primary cursor-pointer"
                   />
                 </label>
               );
