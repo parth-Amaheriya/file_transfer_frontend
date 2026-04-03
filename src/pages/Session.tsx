@@ -305,23 +305,6 @@ const Session = () => {
     // Files are downloaded automatically via WebRTC when received
     console.log("File received via WebRTC P2P - download automatic via File System Access API");
   };
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
-          console.log('File downloaded successfully:', filename);
-        } else {
-          console.error('File download failed:', response.status);
-        }
-      } catch (error) {
-        console.error('File download failed:', error);
-      }
-    }
-  };
 
   const handleDisconnect = () => {
     // Close WebRTC connection
