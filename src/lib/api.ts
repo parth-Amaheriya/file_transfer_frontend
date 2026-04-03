@@ -20,19 +20,35 @@ export interface PairingCodeOut {
 }
 
 export interface Message {
-  type: "text" | "file_init" | "file_chunk" | "file_end" | "file_cancel" | "peer_connected" | "file_shared";
+  type:
+    | "text"
+    | "file_manifest"
+    | "have"
+    | "request"
+    | "complete"
+    | "file_init"
+    | "file_chunk"
+    | "file_end"
+    | "file_cancel"
+    | "peer_connected"
+    | "file_shared";
   content?: string;
   file_name?: string;
   filename?: string;
   file_size?: number;
   file_id?: string;
+  chunk_index?: number;
+  chunk_indices?: number[];
   chunk_data?: string;
   chunk_size?: number;
+  chunk_hashes?: string[];
+  origin_device_id?: string;
   mime_type?: string;
   timestamp?: string | number;
   sender?: "you" | "peer";
   isCode?: boolean;
   codeTitle?: string;
+  relay_hop?: number;
 }
 
 export interface SignalingMessage {
@@ -101,43 +117,6 @@ export const api = {
     });
     if (!response.ok) throw new Error("Failed to leave pairing");
     return response.json();
-  },
-
-  async uploadFile(pairingId: string, file: File, deviceId: string, onProgress?: (progress: number) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      formData.append("device_id", deviceId);
-      formData.append("file", file);
-
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable && onProgress) {
-          const progress = (event.loaded / event.total) * 100;
-          onProgress(progress);
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
-        }
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(new Error("Upload failed"));
-      });
-
-      xhr.open("POST", `${API_BASE}/api/pairing/${pairingId}/files`);
-      xhr.send(formData);
-    });
-  },
-
-  async downloadFile(pairingId: string, filename: string): Promise<Blob> {
-    const response = await fetch(`${API_BASE}/api/pairing/${pairingId}/files/${filename}`);
-    if (!response.ok) throw new Error("Failed to download file");
-    return response.blob();
   },
 
   createWebSocket(pairingId: string, deviceId: string): WebSocket {

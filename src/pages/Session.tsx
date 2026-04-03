@@ -11,7 +11,63 @@ import MessagingPanel from "@/components/MessagingPanel";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import { type FileItem } from "@/components/FileTransferPanel";
 import { api, type DeviceDescriptor, type PairingCodeOut, type Message } from "@/lib/api";
-import { WebRTCManager, type FileTransferProgress } from "@/lib/webrtc";
+import { WebRTCManager, type FileTransferProgress, type SwarmChunkReceipt, type SwarmManifest } from "@/lib/webrtc";
+
+type SwarmTransferState = {
+  manifest: SwarmManifest;
+  sourceFile?: File;
+  localChunks: Map<number, Uint8Array>;
+  ownedChunks: Set<number>;
+  peerChunks: Record<string, Set<number>>;
+  inFlight: Record<string, Set<number>>;
+  completed: boolean;
+};
+
+const calculateSwarmChunkSize = (fileSize: number) => {
+  if (fileSize < 1024 * 1024) return 16 * 1024;
+  if (fileSize < 100 * 1024 * 1024) return 64 * 1024;
+  return 128 * 1024;
+};
+
+const bytesToHex = (bytes: ArrayBuffer) =>
+  Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const hashChunk = async (chunk: Uint8Array) => {
+  const buffer = new Uint8Array(chunk.byteLength);
+  buffer.set(chunk);
+  const digest = await crypto.subtle.digest("SHA-256", buffer.buffer);
+  return bytesToHex(digest);
+};
+
+const createSwarmManifest = async (file: File, originDeviceId: string, fileId: string): Promise<SwarmManifest> => {
+  const chunkSize = calculateSwarmChunkSize(file.size);
+  const chunkCount = Math.ceil(file.size / chunkSize);
+  const chunkHashes: string[] = [];
+
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+    const start = chunkIndex * chunkSize;
+    const end = Math.min(start + chunkSize, file.size);
+    const chunk = new Uint8Array(await file.slice(start, end).arrayBuffer());
+    chunkHashes.push(await hashChunk(chunk));
+  }
+
+  return {
+    fileId,
+    filename: file.name,
+    fileSize: file.size,
+    mimeType: file.type || "application/octet-stream",
+    chunkSize,
+    chunkCount,
+    chunkHashes,
+    originDeviceId,
+  };
+};
+
+const readFileChunk = async (file: File, chunkIndex: number, chunkSize: number) => {
+  const start = chunkIndex * chunkSize;
+  const end = Math.min(start + chunkSize, file.size);
+  return new Uint8Array(await file.slice(start, end).arrayBuffer());
+};
 
 const Session = () => {
   const navigate = useNavigate();
@@ -34,13 +90,136 @@ const Session = () => {
   const [unreadTabs, setUnreadTabs] = useState<Set<string>>(new Set());
   const webrtcManagersRef = useRef<Map<string, WebRTCManager>>(new Map<string, WebRTCManager>());
   const peerConnectionStatesRef = useRef<Record<string, RTCPeerConnectionState>>({});
+  const [peerConnectionStates, setPeerConnectionStates] = useState<Record<string, RTCPeerConnectionState>>({});
+  const swarmTransfersRef = useRef<Map<string, SwarmTransferState>>(new Map());
   const lastProcessedMessageIndexRef = useRef<number>(-1);
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
 
   const getConnectedPeerManagers = (): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())
-      .filter(([peerId]) => peerConnectionStatesRef.current[peerId] === "connected")
+      .filter(([peerId]) => peerConnectionStates[peerId] === "connected")
       .map(([, manager]) => manager);
+  };
+
+  const getConnectedPeerIds = (): string[] => {
+    return Array.from(webrtcManagersRef.current.keys() as Iterable<string>).filter(
+      (peerId) => peerConnectionStatesRef.current[peerId] === "connected"
+    );
+  };
+
+  const ensureTransfer = (manifest: SwarmManifest) => {
+    const existing = swarmTransfersRef.current.get(manifest.fileId);
+    if (existing) {
+      return existing;
+    }
+
+    const created: SwarmTransferState = {
+      manifest,
+      localChunks: new Map(),
+      ownedChunks: new Set(),
+      peerChunks: {},
+      inFlight: {},
+      completed: false,
+    };
+
+    swarmTransfersRef.current.set(manifest.fileId, created);
+    return created;
+  };
+
+  const markPeerChunks = (fileId: string, peerId: string, chunkIndices: number[]) => {
+    const transfer = swarmTransfersRef.current.get(fileId);
+    if (!transfer) {
+      return;
+    }
+
+    if (!transfer.peerChunks[peerId]) {
+      transfer.peerChunks[peerId] = new Set();
+    }
+
+    chunkIndices.forEach((chunkIndex) => transfer.peerChunks[peerId].add(chunkIndex));
+  };
+
+  const markOwnChunk = (fileId: string, chunkIndex: number, chunkData: Uint8Array) => {
+    const transfer = swarmTransfersRef.current.get(fileId);
+    if (!transfer) {
+      return;
+    }
+
+    transfer.localChunks.set(chunkIndex, chunkData);
+    transfer.ownedChunks.add(chunkIndex);
+  };
+
+  const broadcastHave = async (fileId: string, chunkIndices: number[]) => {
+    const managers = getConnectedPeerManagers();
+    await Promise.all(
+      managers.map((manager) => manager.sendHave(fileId, chunkIndices).catch((error) => console.error("Failed to broadcast HAVE:", error)))
+    );
+  };
+
+  const requestNextChunks = async (fileId: string) => {
+    const transfer = swarmTransfersRef.current.get(fileId);
+    if (!transfer || transfer.completed) {
+      return;
+    }
+
+    const connectedPeers = getConnectedPeerIds();
+    if (connectedPeers.length === 0) {
+      return;
+    }
+
+    const { manifest } = transfer;
+    const missingChunks = Array.from({ length: manifest.chunkCount }, (_, index) => index).filter(
+      (chunkIndex) => !transfer.ownedChunks.has(chunkIndex)
+    );
+
+    if (missingChunks.length === 0) {
+      return;
+    }
+
+    const peerCounts = new Map<number, number>();
+    for (const chunkIndex of missingChunks) {
+      let count = 0;
+      for (const peerId of connectedPeers) {
+        if (transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) {
+          count += 1;
+        }
+      }
+      peerCounts.set(chunkIndex, count);
+    }
+
+    const outstandingByPeer = (peerId: string) => transfer.inFlight[peerId]?.size || 0;
+    const inFlight = new Set<number>();
+    Object.values(transfer.inFlight as Record<string, Set<number>>).forEach((entries: Set<number>) => {
+      entries.forEach((chunkIndex) => inFlight.add(chunkIndex));
+    });
+
+    const orderedChunks = missingChunks
+      .filter((chunkIndex) => !inFlight.has(chunkIndex))
+      .sort((left, right) => (peerCounts.get(left) || 0) - (peerCounts.get(right) || 0));
+
+    for (const chunkIndex of orderedChunks) {
+      const candidatePeers = connectedPeers.filter(
+        (peerId) => (transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) && outstandingByPeer(peerId) < 2
+      );
+
+      if (candidatePeers.length === 0) {
+        continue;
+      }
+
+      const peerId = candidatePeers.sort((left, right) => outstandingByPeer(left) - outstandingByPeer(right))[0];
+      if (!transfer.inFlight[peerId]) {
+        transfer.inFlight[peerId] = new Set();
+      }
+
+      transfer.inFlight[peerId].add(chunkIndex);
+      const manager = webrtcManagersRef.current.get(peerId);
+      if (manager) {
+        manager.requestChunk(fileId, chunkIndex).catch((error) => {
+          console.error(`Failed to request chunk ${chunkIndex} from ${peerId}:`, error);
+          transfer.inFlight[peerId].delete(chunkIndex);
+        });
+      }
+    }
   };
 
   const initiateMutation = useMutation({
@@ -173,6 +352,25 @@ const Session = () => {
       }
     };
 
+    const syncSwarmTransfersWithPeer = async (peerId: string) => {
+      const manager = webrtcManagersRef.current.get(peerId);
+      if (!manager) {
+        return;
+      }
+
+      for (const transfer of swarmTransfersRef.current.values()) {
+        try {
+          await manager.announceSwarmManifest(transfer.manifest);
+          const ownedChunks = Array.from(transfer.ownedChunks.values());
+          if (ownedChunks.length > 0) {
+            await manager.sendHave(transfer.manifest.fileId, ownedChunks);
+          }
+        } catch (error) {
+          console.error(`Failed to sync swarm manifest to ${peerId}:`, error);
+        }
+      }
+    };
+
     const createPeerManager = (remotePeer: DeviceDescriptor) => {
       const remotePeerId = remotePeer.identifier;
       const isInitiator = deviceId.localeCompare(remotePeerId) < 0;
@@ -188,26 +386,72 @@ const Session = () => {
 
           if (message.type === "peer_connected") {
             setPairing((prev) => prev ? { ...prev, status: "connected" } : null);
+            return;
           }
 
-          setMessages((prev) => [...prev, { ...message, sender: "peer" }]);
+          if (message.type === "file_manifest" && message.file_id && message.filename && message.file_size) {
+            const chunkSize = message.chunk_size || calculateSwarmChunkSize(message.file_size);
+            const manifest: SwarmManifest = {
+              fileId: message.file_id,
+              filename: message.filename,
+              fileSize: message.file_size,
+              mimeType: message.mime_type || "application/octet-stream",
+              chunkSize,
+              chunkCount: Math.ceil(message.file_size / chunkSize),
+              chunkHashes: message.chunk_hashes || [],
+              originDeviceId: message.origin_device_id || remotePeerId,
+            };
 
-          if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
-            let tabToMark = "";
-            if (message.type === "text") {
-              tabToMark = message.isCode ? "code" : "messages";
-            } else if (message.type.includes("file")) {
-              tabToMark = "files";
+            const transfer = ensureTransfer(manifest);
+            transfer.manifest = manifest;
+            if (!transfer.peerChunks[remotePeerId]) {
+              transfer.peerChunks[remotePeerId] = new Set();
             }
 
-            if (tabToMark) {
-              setUnreadTabs((prev) => new Set([...prev, tabToMark]));
+            if (manifest.originDeviceId === remotePeerId) {
+              transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: manifest.chunkCount }, (_, index) => index));
+            }
+
+            void requestNextChunks(manifest.fileId);
+            return;
+          }
+
+          if (message.type === "have" && message.file_id && message.chunk_indices) {
+            markPeerChunks(message.file_id, remotePeerId, message.chunk_indices);
+            void requestNextChunks(message.file_id);
+            return;
+          }
+
+          if (message.type === "complete" && message.file_id) {
+            const transfer = swarmTransfersRef.current.get(message.file_id);
+            if (transfer) {
+              transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: transfer.manifest.chunkCount }, (_, index) => index));
+            }
+            void requestNextChunks(message.file_id);
+            return;
+          }
+
+          if (message.type !== "request" && message.type !== "have" && message.type !== "complete" && message.type !== "file_manifest" && message.type !== "file_cancel") {
+            setMessages((prev) => [...prev, { ...message, sender: "peer" }]);
+
+            if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
+              let tabToMark = "";
+              if (message.type === "text") {
+                tabToMark = message.isCode ? "code" : "messages";
+              } else if (message.type.includes("file")) {
+                tabToMark = "files";
+              }
+
+              if (tabToMark) {
+                setUnreadTabs((prev) => new Set([...prev, tabToMark]));
+              }
             }
           }
         },
         (state) => {
           console.log(`WebRTC connection state changed for ${remotePeerId}:`, state);
           peerConnectionStatesRef.current[remotePeerId] = state;
+          setPeerConnectionStates((prev) => ({ ...prev, [remotePeerId]: state }));
           updateOverallConnectionState();
 
           if (state === "failed" || state === "disconnected" || state === "closed") {
@@ -217,12 +461,25 @@ const Session = () => {
               webrtcManagersRef.current.delete(remotePeerId);
             }
             delete peerConnectionStatesRef.current[remotePeerId];
+            setPeerConnectionStates((prev) => {
+              const updated = { ...prev };
+              delete updated[remotePeerId];
+              return updated;
+            });
 
-            api.leavePairing(pairing.id, remotePeerId)
-              .then((updatedPairing) => setPairing(updatedPairing))
-              .catch((error) => console.error(`Failed to update pairing after ${remotePeerId} disconnect:`, error));
+            for (const transfer of swarmTransfersRef.current.values()) {
+              delete transfer.peerChunks[remotePeerId];
+              delete transfer.inFlight[remotePeerId];
+            }
 
             updateOverallConnectionState();
+            void Promise.all(Array.from(swarmTransfersRef.current.keys() as Iterable<string>).map((fileId) => requestNextChunks(fileId)));
+            return;
+          }
+
+          if (state === "connected") {
+            void syncSwarmTransfersWithPeer(remotePeerId);
+            void Promise.all(Array.from(swarmTransfersRef.current.keys() as Iterable<string>).map((fileId) => requestNextChunks(fileId)));
           }
         },
         (progress) => {
@@ -270,14 +527,70 @@ const Session = () => {
 
             return prev;
           });
+        },
+        (completedFile) => {
+          const transfer = swarmTransfersRef.current.get(completedFile.fileId);
+          if (transfer) {
+            transfer.completed = true;
+            transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: transfer.manifest.chunkCount }, (_, index) => index));
+          }
+          void requestNextChunks(completedFile.fileId);
+        },
+        async (chunk: SwarmChunkReceipt) => {
+          const transfer = swarmTransfersRef.current.get(chunk.fileId);
+          if (!transfer) {
+            return;
+          }
+
+          const expectedHash = transfer.manifest.chunkHashes[chunk.chunkIndex];
+          if (expectedHash) {
+            const actualHash = await hashChunk(chunk.chunk);
+            if (actualHash !== expectedHash) {
+              console.warn(`Rejecting chunk ${chunk.chunkIndex} for ${chunk.fileId} due to hash mismatch`);
+              transfer.inFlight[remotePeerId]?.delete(chunk.chunkIndex);
+              return;
+            }
+          }
+
+          markOwnChunk(chunk.fileId, chunk.chunkIndex, chunk.chunk);
+          markPeerChunks(chunk.fileId, remotePeerId, [chunk.chunkIndex]);
+
+          transfer.inFlight[remotePeerId]?.delete(chunk.chunkIndex);
+
+          await broadcastHave(chunk.fileId, [chunk.chunkIndex]);
+
+          if (transfer.ownedChunks.size === transfer.manifest.chunkCount) {
+            transfer.completed = true;
+          }
+
+          await requestNextChunks(chunk.fileId);
+        },
+        async ({ fileId, chunkIndex }) => {
+          const transfer = swarmTransfersRef.current.get(fileId);
+          if (!transfer) {
+            return null;
+          }
+
+          const existingChunk = transfer.localChunks.get(chunkIndex);
+          if (existingChunk) {
+            return existingChunk;
+          }
+
+          if (transfer.sourceFile) {
+            return readFileChunk(transfer.sourceFile, chunkIndex, transfer.manifest.chunkSize);
+          }
+
+          return null;
         }
       );
 
       webrtcManagersRef.current.set(remotePeerId, manager);
       peerConnectionStatesRef.current[remotePeerId] = "new";
+      setPeerConnectionStates((prev) => ({ ...prev, [remotePeerId]: "new" }));
       manager.initialize().catch((error) => {
         console.error(`Failed to initialize peer connection with ${remotePeerId}:`, error);
         peerConnectionStatesRef.current[remotePeerId] = "failed";
+        setPeerConnectionStates((prev) => ({ ...prev, [remotePeerId]: "failed" }));
         updateOverallConnectionState();
       });
     };
@@ -356,25 +669,68 @@ const Session = () => {
     const managers = getConnectedPeerManagers();
     if (managers.length === 0) return;
 
-    // Broadcast the file to every live peer manager.
-    for (const manager of managers) {
-      try {
-        await manager.sendFile(file);
-      } catch (error) {
-        console.error("File upload failed:", error);
-      }
+    const fileId = Math.random().toString(36).substr(2, 9);
+
+    try {
+      const manifest = await createSwarmManifest(file, deviceId, fileId);
+      const transfer = ensureTransfer(manifest);
+      transfer.sourceFile = file;
+      transfer.manifest = manifest;
+      transfer.completed = false;
+      transfer.ownedChunks = new Set(Array.from({ length: manifest.chunkCount }, (_, index) => index));
+
+      setFiles((prev) => [
+        ...prev,
+        {
+          id: manifest.fileId,
+          name: manifest.filename,
+          size: `${(manifest.fileSize / 1024 / 1024).toFixed(1)} MB`,
+          progress: 0,
+          status: "sending",
+          type: manifest.filename.endsWith(".jpg") || manifest.filename.endsWith(".png") || manifest.filename.endsWith(".gif")
+            ? "image"
+            : manifest.filename.endsWith(".mp4") || manifest.filename.endsWith(".avi")
+              ? "video"
+              : manifest.filename.endsWith(".zip") || manifest.filename.endsWith(".rar")
+                ? "archive"
+                : "other",
+          direction: "sent",
+        },
+      ]);
+
+      await Promise.all(managers.map(async (manager) => {
+        await manager.announceSwarmManifest(manifest);
+        await manager.sendHave(manifest.fileId, Array.from({ length: manifest.chunkCount }, (_, index) => index));
+      }));
+
+      setFiles((prev) => prev.map((fileItem) => fileItem.id === manifest.fileId ? { ...fileItem, progress: 100, status: "completed" } : fileItem));
+    } catch (error) {
+      console.error("File upload failed:", error);
     }
   };
 
   const cancelFileTransfer = (fileId: string) => {
+    const swarmTransfer = swarmTransfersRef.current.get(fileId);
+    if (swarmTransfer) {
+      const cancelMessage: Message = {
+        type: "file_cancel",
+        filename: swarmTransfer.manifest.filename,
+        file_id: fileId,
+        timestamp: Date.now(),
+      };
+
+      for (const manager of getConnectedPeerManagers()) {
+        manager.sendMessage(cancelMessage).catch((error) => console.error("Failed to broadcast swarm cancellation:", error));
+      }
+
+      swarmTransfersRef.current.delete(fileId);
+      setFiles((prev) => prev.map((file) => file.id === fileId ? { ...file, status: "failed", progress: 0 } : file));
+      return;
+    }
+
     for (const manager of Array.from(webrtcManagersRef.current.values()) as WebRTCManager[]) {
       manager.cancelFileTransfer(fileId);
     }
-  };
-
-  const downloadFile = async (filename: string) => {
-    // Files are downloaded automatically via WebRTC when received
-    console.log("File received via WebRTC P2P - download automatic via File System Access API");
   };
 
   const handleDisconnect = () => {
@@ -384,10 +740,10 @@ const Session = () => {
     }
     webrtcManagersRef.current.clear();
     peerConnectionStatesRef.current = {};
-
-    if (pairing) {
-      api.leavePairing(pairing.id, deviceId).catch(() => undefined);
-    }
+    setPeerConnectionStates({});
+    swarmTransfersRef.current.clear();
+    markedFilesUnreadRef.current.clear();
+    lastProcessedMessageIndexRef.current = -1;
 
     // Clear all cache and state
     sessionStorage.removeItem("pairing");
@@ -398,6 +754,7 @@ const Session = () => {
     setPairing(null);
     setMessages([]);
     setFiles([]);
+    setUnreadTabs(new Set());
     setConnectionState("new");
 
     // Navigate back to home
@@ -407,6 +764,21 @@ const Session = () => {
   if (!pairing) {
     return <div>Loading...</div>;
   }
+
+  const allParticipants = [pairing.initiator, ...(pairing.peers || [])].filter(
+    (participant) => participant.identifier !== deviceId
+  );
+  const livePeers = allParticipants.filter(
+    (participant) => peerConnectionStates[participant.identifier] === "connected"
+  );
+  const liveConnectionState =
+    livePeers.length > 0
+      ? "connected"
+      : Object.values(peerConnectionStates).some((state) => state === "connecting" || state === "new")
+        ? "connecting"
+        : Object.values(peerConnectionStates).some((state) => state === "failed" || state === "disconnected" || state === "closed")
+          ? "failed"
+          : connectionState;
 
   return (
     <div className="min-h-screen relative">
@@ -429,13 +801,13 @@ const Session = () => {
           <ConnectionPanel
             pairingCode={pairing.code}
             status={
-              connectionState === "connected" ? "connected" :
-              connectionState === "failed" ? "failed" :
+              liveConnectionState === "connected" ? "connected" :
+              liveConnectionState === "failed" ? "failed" :
               pairing.status === "pending" ? "waiting" : "connecting"
             }
             onDisconnect={handleDisconnect}
-            peers={pairing.peers}
-            peerCount={pairing.peer_count}
+            peers={livePeers}
+            peerCount={livePeers.length}
           />
 
           <div className="surface-elevated rounded-xl p-6">

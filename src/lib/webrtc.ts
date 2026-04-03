@@ -25,6 +25,42 @@ interface ReceivedFileData {
   mode: 'memory' | 'streaming'; // Which mode is being used
   bytesWritten?: number; // For streaming mode
   cancelled?: boolean; // Flag to indicate cancellation
+  relayHop?: number;
+  chunkSize?: number;
+  chunkHashes?: string[];
+  filename?: string;
+}
+
+export interface ReceivedFileComplete {
+  file: File;
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  relayHop?: number;
+}
+
+export interface SwarmManifest {
+  fileId: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  chunkSize: number;
+  chunkCount: number;
+  chunkHashes: string[];
+  originDeviceId: string;
+}
+
+export interface SwarmChunkRequest {
+  fileId: string;
+  chunkIndex: number;
+}
+
+export interface SwarmChunkReceipt {
+  fileId: string;
+  chunkIndex: number;
+  chunk: Uint8Array;
+  filename?: string;
+  mimeType?: string;
 }
 
 export class WebRTCManager {
@@ -40,6 +76,9 @@ export class WebRTCManager {
   private onMessage: (message: Message) => void;
   private onConnectionStateChange: (state: RTCPeerConnectionState) => void;
   private onFileProgress: (progress: FileTransferProgress) => void;
+  private onFileComplete: (file: ReceivedFileComplete) => void;
+  private onSwarmChunkReceived?: (chunk: SwarmChunkReceipt) => void;
+  private getChunkData?: (request: SwarmChunkRequest) => Promise<Uint8Array | null>;
   private signalingInterval: number | null = null;
   private connectionTimeout: number | null = null;
   private pendingIceCandidates: RTCIceCandidate[] = []; // Buffer ICE candidates until remote description is set
@@ -56,7 +95,10 @@ export class WebRTCManager {
     isInitiator: boolean,
     onMessage: (message: Message) => void,
     onConnectionStateChange: (state: RTCPeerConnectionState) => void,
-    onFileProgress: (progress: FileTransferProgress) => void
+    onFileProgress: (progress: FileTransferProgress) => void,
+    onFileComplete: (file: ReceivedFileComplete) => void,
+    onSwarmChunkReceived?: (chunk: SwarmChunkReceipt) => void,
+    getChunkData?: (request: SwarmChunkRequest) => Promise<Uint8Array | null>
   ) {
     this.signalingServer = signalingServer;
     this.pairingId = pairingId;
@@ -66,6 +108,9 @@ export class WebRTCManager {
     this.onMessage = onMessage;
     this.onConnectionStateChange = onConnectionStateChange;
     this.onFileProgress = onFileProgress;
+    this.onFileComplete = onFileComplete;
+    this.onSwarmChunkReceived = onSwarmChunkReceived;
+    this.getChunkData = getChunkData;
     this.dataChannelPromise = new Promise(resolve => this.dataChannelResolver = resolve);
   }
 
@@ -216,22 +261,203 @@ export class WebRTCManager {
     }
   }
 
+  private calculateChunkSize(fileSize: number): number {
+    return fileSize < 1024 * 1024 ? 16 * 1024 :
+      fileSize < 100 * 1024 * 1024 ? 64 * 1024 :
+      128 * 1024;
+  }
+
+  private async hashChunk(chunkData: Uint8Array): Promise<string> {
+    const buffer = new Uint8Array(chunkData.byteLength);
+    buffer.set(chunkData);
+    const digest = await crypto.subtle.digest("SHA-256", buffer.buffer);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  private createBinaryChunkMessage(fileId: string, chunkIndex: number, chunkData: Uint8Array): ArrayBuffer {
+    const fileIdBytes = new TextEncoder().encode(fileId);
+    const buffer = new ArrayBuffer(1 + 4 + 1 + fileIdBytes.length + chunkData.byteLength);
+    const view = new DataView(buffer);
+
+    view.setUint8(0, 3);
+    view.setUint32(1, chunkIndex, true);
+    view.setUint8(5, fileIdBytes.length);
+
+    new Uint8Array(buffer, 6, fileIdBytes.length).set(fileIdBytes);
+    new Uint8Array(buffer, 6 + fileIdBytes.length).set(chunkData);
+
+    return buffer;
+  }
+
+  private decodeBinaryChunkMessage(data: ArrayBuffer): { fileId: string; chunkIndex: number; chunkData: Uint8Array } | null {
+    if (data.byteLength < 6) {
+      return null;
+    }
+
+    const view = new DataView(data);
+    const messageType = view.getUint8(0);
+    if (messageType !== 2 && messageType !== 3) {
+      return null;
+    }
+
+    const chunkIndex = view.getUint32(1, true);
+    const fileIdLength = view.getUint8(5);
+    if (data.byteLength < 6 + fileIdLength) {
+      return null;
+    }
+
+    const fileIdBytes = new Uint8Array(data, 6, fileIdLength);
+    const fileId = new TextDecoder().decode(fileIdBytes);
+    const chunkData = new Uint8Array(data.slice(6 + fileIdLength));
+    return { fileId, chunkIndex, chunkData };
+  }
+
+  private async storeSwarmChunk(fileId: string, chunkIndex: number, chunkData: Uint8Array): Promise<void> {
+    const fileData = this.receivedFiles.get(fileId);
+    if (!fileData || fileData.cancelled) {
+      return;
+    }
+
+    const expectedHash = fileData.chunkHashes?.[chunkIndex];
+    if (expectedHash) {
+      const actualHash = await this.hashChunk(chunkData);
+      if (actualHash !== expectedHash) {
+        console.warn(`Rejected chunk ${chunkIndex} for ${fileId} due to hash mismatch`);
+        this.onFileProgress({
+          id: fileData.fileId,
+          name: fileData.filename || this.receivingFilesByFileId.get(fileId) || fileId,
+          size: fileData.totalSize,
+          progress: 0,
+          status: 'failed'
+        });
+        return;
+      }
+    }
+
+    fileData.chunks = fileData.chunks || new Map<number, Uint8Array>();
+    fileData.chunks.set(chunkIndex, chunkData);
+
+    const receivedChunks = fileData.chunks.size;
+    const progress = (receivedChunks / fileData.expectedChunks) * 100;
+
+    this.onFileProgress({
+      id: fileData.fileId,
+      name: this.receivingFilesByFileId.get(fileId) || fileData.fileId,
+      size: fileData.totalSize,
+      progress,
+      status: receivedChunks === fileData.expectedChunks ? 'completed' : 'receiving'
+    });
+
+    this.onSwarmChunkReceived?.({
+      fileId,
+      chunkIndex,
+      chunk: chunkData,
+      filename: this.receivingFilesByFileId.get(fileId),
+      mimeType: fileData.mimeType
+    });
+
+    if (receivedChunks === fileData.expectedChunks) {
+      await this.finalizeSwarmFile(fileId);
+    }
+  }
+
+  private async finalizeSwarmFile(fileId: string): Promise<void> {
+    const fileData = this.receivedFiles.get(fileId);
+    if (!fileData || fileData.cancelled || !fileData.chunks || fileData.chunks.size !== fileData.expectedChunks) {
+      return;
+    }
+
+    const filename = this.receivingFilesByFileId.get(fileId) || fileId;
+    let completedFile: File;
+
+    if (fileData.mode === 'streaming' && fileData.fileHandle) {
+      completedFile = await fileData.fileHandle.getFile();
+    } else {
+      const sortedChunks = Array.from(fileData.chunks.entries())
+        .sort(([left], [right]) => left - right)
+        .map(([, chunk]) => chunk);
+
+      const totalSize = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const combined = new Uint8Array(totalSize);
+      let offset = 0;
+      for (const chunk of sortedChunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      completedFile = new File([combined], filename, { type: fileData.mimeType || 'application/octet-stream' });
+    }
+
+    this.onFileProgress({
+      id: fileData.fileId,
+      name: filename,
+      size: fileData.totalSize,
+      progress: 100,
+      status: 'completed'
+    });
+
+    this.onFileComplete({
+      file: completedFile,
+      fileId: fileData.fileId,
+      filename,
+      mimeType: fileData.mimeType,
+      relayHop: fileData.relayHop
+    });
+
+    this.receivedFiles.delete(fileId);
+    this.receivingFilesByFileId.delete(fileId);
+  }
+
+  async announceSwarmManifest(manifest: SwarmManifest): Promise<void> {
+    await this.sendMessage({
+      type: 'file_manifest',
+      file_id: manifest.fileId,
+      filename: manifest.filename,
+      file_size: manifest.fileSize,
+      mime_type: manifest.mimeType,
+      chunk_size: manifest.chunkSize,
+      chunk_hashes: manifest.chunkHashes,
+      origin_device_id: manifest.originDeviceId
+    });
+  }
+
+  async sendHave(fileId: string, chunkIndices: number[]): Promise<void> {
+    await this.sendMessage({
+      type: 'have',
+      file_id: fileId,
+      chunk_indices: chunkIndices
+    });
+  }
+
+  async requestChunk(fileId: string, chunkIndex: number): Promise<void> {
+    await this.sendMessage({
+      type: 'request',
+      file_id: fileId,
+      chunk_index: chunkIndex
+    });
+  }
+
+  async sendChunk(fileId: string, chunkIndex: number, chunkData: Uint8Array): Promise<void> {
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+      throw new Error('Data channel not ready');
+    }
+
+    await this.waitForBufferSpace();
+    this.dataChannel.send(this.createBinaryChunkMessage(fileId, chunkIndex, chunkData));
+  }
+
   private async handleDataChannelMessage(data: ArrayBuffer | string): Promise<void> {
     try {
       if (typeof data === 'string') {
         // Handle JSON messages
         const message: Message = JSON.parse(data);
 
-        if (message.type === 'file_init' && message.filename && message.file_size) {
-          // Start receiving file - use fileId from sender if available, otherwise generate one
+        if ((message.type === 'file_manifest' || message.type === 'file_init') && message.filename && message.file_size) {
           const fileId = message.file_id || Math.random().toString(36).substr(2, 9);
-          // Use same chunk size calculation as sender
-          const chunkSize = message.file_size < 1024 * 1024 ? 16 * 1024 :
-                           message.file_size < 100 * 1024 * 1024 ? 64 * 1024 :
-                           128 * 1024;
+          const chunkSize = message.chunk_size || this.calculateChunkSize(message.file_size);
           const expectedChunks = Math.ceil(message.file_size / chunkSize);
 
-          console.log(`Starting to receive file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}, fileId: ${fileId}`);
+          console.log(`Starting to receive swarm file: ${message.filename} (${message.file_size} bytes), expected chunks: ${expectedChunks}, fileId: ${fileId}`);
 
           // Decide which mode to use: streaming for files >100MB when available, memory buffer otherwise
           let mode: 'memory' | 'streaming' = 'memory';
@@ -259,12 +485,14 @@ export class WebRTCManager {
             chunks: mode === 'memory' ? new Map() : undefined,
             fileHandle: mode === 'streaming' ? fileHandle : undefined,
             bytesWritten: mode === 'streaming' ? 0 : undefined,
-            cancelled: false
+            cancelled: false,
+            relayHop: message.relay_hop || 0,
+            chunkSize,
+            chunkHashes: message.chunk_hashes,
+            filename: message.filename
           };
 
-          // Store by fileId instead of filename for multiple file support
           this.receivedFiles.set(fileId, receivedFileData);
-          // Track fileId -> filename for cancellation
           this.receivingFilesByFileId.set(fileId, message.filename);
 
           this.onFileProgress({
@@ -277,84 +505,32 @@ export class WebRTCManager {
 
           console.log(`File reception mode: ${mode} (${message.file_size} bytes)`);
 
-        } else if (message.type === 'file_end' && message.filename) {
-          // Find the file by filename and mark it complete
-          let fileData: ReceivedFileData | undefined;
-          let fileIdToUse: string | undefined;
-          
-          // Search through receivedFiles to find the matching file
-          for (const [fId, fData] of this.receivedFiles.entries()) {
-            if (this.receivingFilesByFileId.get(fId) === message.filename) {
-              fileData = fData;
-              fileIdToUse = fId;
-              break;
+        } else if (message.type === 'have' || message.type === 'request' || message.type === 'complete') {
+          if (message.type === 'request' && message.file_id && typeof message.chunk_index === 'number') {
+            const requestedChunk = await this.getChunkData?.({
+              fileId: message.file_id,
+              chunkIndex: message.chunk_index,
+            });
+
+            if (requestedChunk) {
+              await this.sendChunk(message.file_id, message.chunk_index, requestedChunk);
             }
           }
 
-          if (fileData && !fileData.cancelled && fileIdToUse) {
-            const totalTime = Date.now() - fileData.startTime;
-            const avgSpeed = fileData.totalSize / (totalTime / 1000) / (1024 * 1024); // MB/s
-            console.log(`File reception completed: ${message.filename} in ${totalTime}ms (${avgSpeed.toFixed(2)} MB/s)`);
-
-            if (fileData.mode === 'streaming') {
-              // Streaming mode: file is already on disk
-              console.log(`Streaming complete, file saved: ${message.filename}`);
-              
-              this.onFileProgress({
-                id: fileData.fileId,
-                name: message.filename,
-                size: fileData.totalSize,
-                progress: 100,
-                status: 'completed'
-              });
-            } else {
-              // Memory buffer mode: combine chunks and download
-              if (fileData.chunks) {
-                const sortedChunks = Array.from(fileData.chunks.entries())
-                  .sort(([a], [b]) => a - b)
-                  .map(([, chunk]) => chunk);
-
-                const totalSize = sortedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-                const combined = new Uint8Array(totalSize);
-                let offset = 0;
-                for (const chunk of sortedChunks) {
-                  combined.set(chunk, offset);
-                  offset += chunk.length;
-                }
-
-                // Create blob and trigger download
-                const blob = new Blob([combined], { type: fileData.mimeType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = message.filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                // Update progress
-                this.onFileProgress({
-                  id: fileData.fileId,
-                  name: message.filename,
-                  size: fileData.totalSize,
-                  progress: 100,
-                  status: 'completed'
-                });
-              }
-            }
-
-            this.receivedFiles.delete(fileIdToUse);
-            // Clean up fileId mapping
-            this.receivingFilesByFileId.delete(fileIdToUse);
+          if (message.type === 'complete' && message.file_id) {
+            await this.finalizeSwarmFile(message.file_id);
           }
+
+          this.onMessage(message);
 
         } else if (message.type === 'file_cancel' && message.filename) {
           // Remote side cancelled the file transfer
           console.log(`Received cancellation for file: ${message.filename}`);
 
+          const cancelKey = message.file_id || message.filename;
+
           // Check if we're receiving this file
-          const fileData = this.receivedFiles.get(message.filename);
+          const fileData = cancelKey ? this.receivedFiles.get(cancelKey) : undefined;
           if (fileData) {
             console.log(`Stopping reception of file: ${message.filename}`);
             
@@ -370,10 +546,10 @@ export class WebRTCManager {
               status: 'failed'
             });
 
-            this.receivedFiles.delete(message.filename);
+            this.receivedFiles.delete(fileData.fileId);
             // Clean up fileId mapping
             for (const [fileId, name] of this.receivingFilesByFileId.entries()) {
-              if (name === message.filename) {
+              if (fileId === cancelKey || name === message.filename) {
                 this.receivingFilesByFileId.delete(fileId);
                 break;
               }
@@ -414,98 +590,66 @@ export class WebRTCManager {
           }
         }
 
-        this.onMessage(message);
+        if (message.type !== 'request' && message.type !== 'complete' && message.type !== 'have') {
+          this.onMessage(message);
+        }
 
       } else if (data instanceof ArrayBuffer) {
         // Handle binary messages
-        const view = new DataView(data);
-        const messageType = view.getUint8(0);
+        const chunkMessage = this.decodeBinaryChunkMessage(data);
 
-        if (messageType === 2) { // Binary file chunk
-          const chunkIndex = view.getUint32(1, true);
-          const fileIdLength = view.getUint8(5);
-          const fileIdBytes = new Uint8Array(data, 6, fileIdLength);
-          const fileId = new TextDecoder().decode(fileIdBytes);
-          const chunkData = data.slice(6 + fileIdLength); // Skip header and fileId
+        if (chunkMessage) {
+          const { fileId, chunkIndex, chunkData } = chunkMessage;
+          console.log(`Received swarm chunk ${chunkIndex} for file ${fileId}`);
 
-          console.log(`Received chunk ${chunkIndex} for file ${fileId}`);
-
-          // Find the file being received by fileId - this allows multiple files
           const fileData = this.receivedFiles.get(fileId);
-          
-          if (fileData) {
-            // Skip if file was cancelled by remote side
-            if (fileData.cancelled) {
-              console.log(`Skipping chunk for cancelled file: ${fileId}`);
-              return;
-            }
+          if (!fileData) {
+            console.warn(`Received chunk for unknown file ${fileId}`);
+            return;
+          }
 
-            const uint8Array = new Uint8Array(chunkData);
+          if (fileData.cancelled) {
+            console.log(`Skipping chunk for cancelled file: ${fileId}`);
+            return;
+          }
 
-            if (fileData.mode === 'streaming' && fileData.fileHandle) {
-              // Write chunk directly to file
-              try {
-                const chunkSize = fileData.totalSize < 1024 * 1024 ? 16 * 1024 :
-                                 fileData.totalSize < 100 * 1024 * 1024 ? 64 * 1024 :
-                                 128 * 1024;
-                const offset = chunkIndex * chunkSize;
-                
-                await this.appendChunkToFile(fileData.fileHandle, uint8Array, offset);
-                fileData.bytesWritten = (fileData.bytesWritten || 0) + uint8Array.length;
+          if (fileData.mode === 'streaming' && fileData.fileHandle) {
+            try {
+              const chunkSize = fileData.chunkSize || this.calculateChunkSize(fileData.totalSize);
+              const offset = chunkIndex * chunkSize;
 
-                const receivedChunks = chunkIndex + 1;
-                const progress = (receivedChunks / fileData.expectedChunks) * 100;
+              await this.appendChunkToFile(fileData.fileHandle, chunkData, offset);
+              fileData.bytesWritten = (fileData.bytesWritten || 0) + chunkData.length;
+              const receivedChunks = (fileData.chunks?.size || 0) + 1;
+              const progress = (receivedChunks / fileData.expectedChunks) * 100;
 
-                // Log progress for large files
-                if (receivedChunks % 10 === 0 || receivedChunks === fileData.expectedChunks) {
-                  const elapsed = Date.now() - fileData.startTime;
-                  const speed = (fileData.bytesWritten || 0) / (elapsed / 1000) / (1024 * 1024); // MB/s
-                  console.log(`Streamed ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
-                }
-
-                this.onFileProgress({
-                  id: fileData.fileId,
-                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
-                  size: fileData.totalSize,
-                  progress,
-                  status: 'receiving'
-                });
-              } catch (error) {
-                console.error('Error writing chunk to file:', error);
-                this.onFileProgress({
-                  id: fileData.fileId,
-                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
-                  size: fileData.totalSize,
-                  progress: 0,
-                  status: 'failed'
-                });
+              if (receivedChunks % 10 === 0 || receivedChunks === fileData.expectedChunks) {
+                const elapsed = Date.now() - fileData.startTime;
+                const speed = (fileData.bytesWritten || 0) / (elapsed / 1000) / (1024 * 1024);
+                console.log(`Streamed ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
               }
-            } else {
-              // Memory buffer mode: store chunk as before
-              if (fileData.chunks) {
-                fileData.chunks.set(chunkIndex, uint8Array);
 
-                const receivedChunks = fileData.chunks.size;
-                const progress = (receivedChunks / fileData.expectedChunks) * 100;
+              this.onFileProgress({
+                id: fileData.fileId,
+                name: fileData.filename || this.receivingFilesByFileId.get(fileId) || 'Unknown',
+                size: fileData.totalSize,
+                progress,
+                status: 'receiving'
+              });
 
-                // Log progress for large files
-                if (receivedChunks % 100 === 0 || receivedChunks === fileData.expectedChunks) {
-                  const elapsed = Date.now() - fileData.startTime;
-                  const speed = (receivedChunks * (fileData.totalSize / fileData.expectedChunks)) / (elapsed / 1000) / (1024 * 1024); // MB/s
-                  console.log(`Received ${receivedChunks}/${fileData.expectedChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
-                }
-
-                this.onFileProgress({
-                  id: fileData.fileId,
-                  name: this.receivingFilesByFileId.get(fileId) || 'Unknown',
-                  size: fileData.totalSize,
-                  progress,
-                  status: 'receiving'
-                });
-              }
+              await this.storeSwarmChunk(fileId, chunkIndex, chunkData);
+            } catch (error) {
+              console.error('Error writing chunk to file:', error);
+              this.onFileProgress({
+                id: fileData.fileId,
+                name: fileData.filename || this.receivingFilesByFileId.get(fileId) || 'Unknown',
+                size: fileData.totalSize,
+                progress: 0,
+                status: 'failed'
+              });
             }
           } else {
-            console.warn(`Received chunk for unknown file ${fileId}`);
+            await this.storeSwarmChunk(fileId, chunkIndex, chunkData);
           }
         }
       }
@@ -555,6 +699,10 @@ export class WebRTCManager {
 
     try {
       if (message.type === 'offer' && !this.isInitiator) {
+        if (this.peerConnection!.signalingState !== 'stable') {
+          console.log('Skipping duplicate or late offer in signaling state:', this.peerConnection!.signalingState);
+          return;
+        }
         console.log('Received offer, creating answer');
         await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
         const answer = await this.peerConnection!.createAnswer();
@@ -572,6 +720,10 @@ export class WebRTCManager {
         await this.processPendingIceCandidates();
 
       } else if (message.type === 'answer' && this.isInitiator) {
+        if (this.peerConnection!.remoteDescription || this.peerConnection!.signalingState !== 'have-local-offer') {
+          console.log('Skipping duplicate or late answer in signaling state:', this.peerConnection!.signalingState);
+          return;
+        }
         console.log('Received answer, setting remote description');
         await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(message.data));
 
@@ -579,6 +731,10 @@ export class WebRTCManager {
         await this.processPendingIceCandidates();
 
       } else if (message.type === 'ice_candidate') {
+        if (!this.peerConnection || this.peerConnection.connectionState === 'closed') {
+          console.log('Skipping ICE candidate because peer connection is closed');
+          return;
+        }
         const candidate = new RTCIceCandidate(message.data);
 
         // If remote description is not set yet, buffer the candidate
@@ -754,7 +910,7 @@ export class WebRTCManager {
     });
   }
 
-  async sendFile(file: File, onProgress?: (progress: number) => void): Promise<void> {
+  async sendFile(file: File, onProgress?: (progress: number) => void, relayHop: number = 0): Promise<void> {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       throw new Error('Data channel not ready');
     }
@@ -794,7 +950,8 @@ export class WebRTCManager {
         file_size: file.size,
         mime_type: file.type,
         timestamp: Date.now(),
-        file_id: fileId // Add fileId to message so receiver can track by it
+        file_id: fileId, // Add fileId to message so receiver can track by it
+        relay_hop: relayHop
       };
 
       await this.sendMessage(startMessage);
@@ -891,7 +1048,8 @@ export class WebRTCManager {
         const endMessage: Message = {
           type: 'file_end',
           filename: file.name,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          relay_hop: relayHop
         };
 
         await this.sendMessage(endMessage);
