@@ -1,3 +1,5 @@
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
 import { Smile, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +12,9 @@ interface MessagingPanelProps {
   onSendMessage: (content: string, targetPeerIds?: string[]) => void;
 }
 
-const emojiOptions = ["😀", "😂", "😍", "👍", "🎉", "🙏", "🔥", "💡", "🤝", "😎", "🥳", "❤️"];
+type EmojiSelect = {
+  native: string;
+};
 
 const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps) => {
   const [input, setInput] = useState("");
@@ -113,6 +117,41 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     updateInput(nextValue, nextCaret);
   };
 
+  const stripLeadingMention = (content: string, targetPeerIds: string[]) => {
+    if (targetPeerIds.length === 0) {
+      return content.trim();
+    }
+
+    const targetPeers = targetPeerIds
+      .map((peerId) => peers.find((peer) => peer.identifier === peerId))
+      .filter((peer): peer is DeviceDescriptor => Boolean(peer));
+
+    const aliases = targetPeers
+      .flatMap((peer) => [peer.label, peer.identifier])
+      .filter((alias): alias is string => Boolean(alias))
+      .sort((left, right) => right.length - left.length);
+
+    const trimmedContent = content.trimStart();
+
+    for (const alias of aliases) {
+      const prefix = `@${alias.toLowerCase()}`;
+      if (!trimmedContent.toLowerCase().startsWith(prefix)) {
+        continue;
+      }
+
+      const nextChar = trimmedContent.slice(prefix.length, prefix.length + 1);
+      if (nextChar && !/\s|,|\.|!|\?|:|;/.test(nextChar)) {
+        continue;
+      }
+
+      const stripped = trimmedContent.slice(prefix.length).trimStart();
+      return stripped || trimmedContent;
+    }
+
+    const stripped = trimmedContent.replace(/^@[^\s]+\s*/, "").trimStart();
+    return stripped || trimmedContent;
+  };
+
   const resolveTargetPeerIds = (content: string) => {
     const trimmed = content.trimStart();
 
@@ -164,7 +203,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     if (!input.trim()) return;
 
     const targetPeerIds = resolveTargetPeerIds(input);
-    onSendMessage(input, targetPeerIds);
+    const outboundContent = stripLeadingMention(input, targetPeerIds);
+    onSendMessage(outboundContent, targetPeerIds);
     setInput("");
     setCaretPosition(0);
     setEmojiPickerOpen(false);
@@ -327,26 +367,17 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         {emojiPickerOpen && (
           <div
             ref={emojiPickerRef}
-            className="absolute bottom-full right-0 z-20 mb-2 w-[18rem] rounded-2xl border bg-card p-3 shadow-lg"
+            className="absolute bottom-full right-0 z-20 mb-2 overflow-hidden rounded-2xl border bg-card shadow-lg"
           >
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Emoji
-            </div>
-            <div className="grid grid-cols-6 gap-2">
-              {emojiOptions.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    insertAtCaret(emoji);
-                  }}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-lg transition-colors hover:bg-secondary"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            <Picker
+              data={data}
+              onEmojiSelect={(emoji: EmojiSelect) => insertAtCaret(emoji.native)}
+              theme="light"
+              previewPosition="none"
+              skinTonePosition="none"
+              searchPosition="top"
+              autoFocus
+            />
           </div>
         )}
 
