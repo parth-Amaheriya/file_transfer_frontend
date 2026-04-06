@@ -65,6 +65,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
