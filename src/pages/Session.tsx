@@ -902,7 +902,7 @@ const Session = () => {
                 </TabsTrigger>
                 <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <MessageSquare className="h-3.5 w-3.5" />
-                  Message
+                  Messages
                   {unreadTabs.has("messages") && (
                     <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
