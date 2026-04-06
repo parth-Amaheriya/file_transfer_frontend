@@ -688,11 +688,18 @@ const Session = () => {
     }
   }, [messages, activeTab]);
 
-  const sendMessage = (content: string) => {
-    const managers = getConnectedPeerManagers();
+  const sendMessage = (content: string, targetPeerIds: string[] = []) => {
+    const recipientIds = targetPeerIds.length > 0 ? targetPeerIds : getConnectedPeerIds();
+    const managers = getConnectedPeerManagers(targetPeerIds.length > 0 ? targetPeerIds : undefined);
     if (managers.length === 0) return;
 
-    const message: Message = { type: "text", content, sender: "you", senderName: deviceName.trim() || "You" };
+    const message: Message = {
+      type: "text",
+      content,
+      sender: "you",
+      senderName: deviceName.trim() || "You",
+      ...(targetPeerIds.length > 0 ? { target_peer_ids: recipientIds } : {}),
+    };
     managers.forEach((manager) => {
       manager.sendMessage(message).catch((error) => console.error("Failed to send message:", error));
     });
@@ -924,7 +931,7 @@ const Session = () => {
               </TabsContent>
 
               <TabsContent value="messages">
-                <MessagingPanel messages={messages} onSendMessage={sendMessage} />
+                <MessagingPanel messages={messages} peers={livePeers} onSendMessage={sendMessage} />
               </TabsContent>
 
               <TabsContent value="code">
