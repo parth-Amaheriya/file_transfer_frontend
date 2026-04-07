@@ -35,36 +35,32 @@ const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, p
   return (
     <div className="surface-elevated rounded-xl p-6 space-y-6 h-fit">
       <div className="space-y-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
-              Pairing Code
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="text-3xl font-bold tracking-[0.3em] font-mono text-foreground">
-                {pairingCode}
-              </span>
-              <Button variant="ghost" size="icon" onClick={copyCode} className="relative">
-                <Copy className="h-4 w-4" />
-                {copied && (
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs bg-foreground text-card px-2 py-1 rounded animate-fade-in">
-                    Copied!
-                  </span>
-                )}
-              </Button>
-            </div>
-          </div>
-
+        <div>
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
+            Pairing Code
+          </p>
           {userName && (
-            <div className="max-w-[110px] text-right pt-1">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                User
-              </p>
-              <p className="text-xs font-medium text-foreground truncate" title={userName}>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-secondary/40 px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              <span className="text-[11px] font-medium text-muted-foreground">You</span>
+              <span className="text-[11px] text-foreground truncate max-w-[110px]" title={userName}>
                 {userName}
-              </p>
+              </span>
             </div>
           )}
+          <div className="flex items-center gap-3">
+            <span className="text-3xl font-bold tracking-[0.3em] font-mono text-foreground">
+              {pairingCode}
+            </span>
+            <Button variant="ghost" size="icon" onClick={copyCode} className="relative">
+              <Copy className="h-4 w-4" />
+              {copied && (
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs bg-foreground text-card px-2 py-1 rounded animate-fade-in">
+                  Copied!
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
