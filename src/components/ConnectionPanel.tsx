@@ -36,18 +36,22 @@ const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, p
     <div className="surface-elevated rounded-xl p-6 space-y-6 h-fit">
       <div className="space-y-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground mb-3">
-            Pairing Code
-          </p>
-          {userName && (
-            <div className="mb-3 flex items-center gap-2 text-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
-              <span className="text-xs text-muted-foreground shrink-0">You</span>
-              <span className="text-sm font-medium text-foreground truncate max-w-[140px]" title={userName}>
-                {userName}
-              </span>
-            </div>
-          )}
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Pairing Code
+            </p>
+            {userName && (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
+                <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground shrink-0">
+                  You
+                </span>
+                <span className="text-xs font-medium uppercase tracking-wide text-foreground truncate max-w-[140px]" title={userName}>
+                  {userName}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-3xl font-bold tracking-[0.3em] font-mono text-foreground">
               {pairingCode}
