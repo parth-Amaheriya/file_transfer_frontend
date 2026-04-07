@@ -29,7 +29,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
   const mentionContext = useMemo(() => {
     const beforeCaret = input.slice(0, caretPosition);
-    const match = beforeCaret.match(/(^|[\s@])@([^\s@]*)$/);
+    const match = beforeCaret.match(/^\s*@([^\s@]*)$/);
 
     if (!match) {
       return null;
@@ -37,11 +37,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
     const token = match[0];
     const tokenStart = beforeCaret.length - token.length;
-    const mentionStart = tokenStart + match[1].length;
 
     return {
-      query: match[2].toLowerCase(),
-      mentionStart,
+      query: match[1].toLowerCase(),
+      mentionStart: tokenStart + match[0].indexOf("@"),
     };
   }, [caretPosition, input]);
 
@@ -143,8 +142,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
   const parseOutgoingMessage = (content: string) => {
     let remainder = content.trimStart();
-    let lastResolvedPeer: DeviceDescriptor | null = null;
-    let consumedAnyMention = false;
+    const targetPeerIds: string[] = [];
 
     while (remainder.startsWith("@")) {
       const match = remainder.match(/^@([^\s@]+)/);
@@ -153,19 +151,16 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         break;
       }
 
-      consumedAnyMention = true;
       const resolvedPeer = resolvePeerFromAlias(match[1]);
 
-      if (!resolvedPeer) {
-        remainder = remainder.slice(match[0].length).trimStart();
-        continue;
+      if (resolvedPeer && !targetPeerIds.includes(resolvedPeer.identifier)) {
+        targetPeerIds.push(resolvedPeer.identifier);
       }
 
-      lastResolvedPeer = resolvedPeer;
       remainder = remainder.slice(match[0].length).trimStart();
     }
 
-    if (!lastResolvedPeer) {
+    if (targetPeerIds.length === 0) {
       return {
         targetPeerIds: [] as string[],
         normalizedContent: content.trim(),
@@ -173,8 +168,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     }
 
     return {
-      targetPeerIds: [lastResolvedPeer.identifier],
-      normalizedContent: remainder || (consumedAnyMention ? "" : content.trim()),
+      targetPeerIds,
+      normalizedContent: remainder,
     };
   };
 
@@ -182,6 +177,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     if (!input.trim()) return;
 
     const { targetPeerIds, normalizedContent } = parseOutgoingMessage(input);
+    if (targetPeerIds.length > 0 && !normalizedContent.trim()) {
+      return;
+    }
+
     onSendMessage(normalizedContent, targetPeerIds);
     setInput("");
     setCaretPosition(0);
