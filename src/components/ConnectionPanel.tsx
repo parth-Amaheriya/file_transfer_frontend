@@ -40,10 +40,10 @@ const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, p
             Pairing Code
           </p>
           {userName && (
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-secondary/40 px-2.5 py-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              <span className="text-[11px] font-medium text-muted-foreground">You</span>
-              <span className="text-[11px] text-foreground truncate max-w-[110px]" title={userName}>
+            <div className="mb-3 flex items-center gap-2 text-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
+              <span className="text-xs text-muted-foreground shrink-0">You</span>
+              <span className="text-sm font-medium text-foreground truncate max-w-[140px]" title={userName}>
                 {userName}
               </span>
             </div>
