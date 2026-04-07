@@ -150,16 +150,27 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
             </div>
           </div>
 
-          {selectedPeerIds.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={clearSelection}
-              className="h-7 px-2.5 text-[11px] rounded-full shrink-0"
+              onClick={selectAllPeers}
+              className="h-7 px-2.5 text-[11px] rounded-full"
+              disabled={peers.length === 0}
             >
-              Clear
+              Send to all
             </Button>
-          )}
+            {selectedPeerIds.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                className="h-7 px-2.5 text-[11px] rounded-full"
+              >
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-card/80 px-3 py-2.5 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10">
