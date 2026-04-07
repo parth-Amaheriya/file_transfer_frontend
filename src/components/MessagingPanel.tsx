@@ -29,7 +29,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
   const mentionContext = useMemo(() => {
     const beforeCaret = input.slice(0, caretPosition);
-    const match = beforeCaret.match(/^\s*@([^\s@]*)$/);
+    const match = beforeCaret.match(/^\s*((?:@[^\s@]+\s*)*)@([^\s@]*)$/);
 
     if (!match) {
       return null;
@@ -39,8 +39,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     const tokenStart = beforeCaret.length - token.length;
 
     return {
-      query: match[1].toLowerCase(),
-      mentionStart: tokenStart + match[0].indexOf("@"),
+      query: match[2].toLowerCase(),
+      mentionStart: tokenStart + match[1].length,
     };
   }, [caretPosition, input]);
 
