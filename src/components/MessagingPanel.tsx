@@ -27,6 +27,27 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel");
 
+  const formatMessageTime = (timestamp?: string | number) => {
+    if (!timestamp) {
+      return "";
+    }
+
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
+  };
+
   const mentionContext = useMemo(() => {
     const beforeCaret = input.slice(0, caretPosition);
     const match = beforeCaret.match(/^\s*((?:@[^\s@]+\s*)*)@([^\s@]*)$/);
@@ -248,61 +269,53 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         if (msg.isCode) return null;
 
         const isYou = msg.sender === "you";
+        const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
         const recipientLabels = msg.target_peer_ids?.length
           ? msg.target_peer_ids.map((peerId) => {
               const peer = peers.find((item) => item.identifier === peerId);
               return `@${peer?.label || peer?.identifier || peerId}`;
             })
           : [];
+        const senderInitials = getInitials(senderLabel);
 
         return (
           <div
             key={index}
             className={`flex ${isYou ? "justify-end" : "justify-start"}`}
           >
-            <div className="flex flex-col max-w-[75%]">
-              
-              {/* Sender name */}
+            <div className={`flex max-w-[78%] gap-3 ${isYou ? "flex-row-reverse" : "flex-row"}`}>
               {!isYou && (
-                <span className="text-[11px] mb-1 px-1 text-muted-foreground">
-                  {msg.senderName || "Peer"}
-                </span>
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-foreground ring-1 ring-border">
+                  {senderInitials || "P"}
+                </div>
               )}
 
-              {isYou && recipientLabels.length > 0 && (
-                <span className="mb-1 px-1 text-[11px] text-muted-foreground">
-                  To {recipientLabels.join(" ")}
-                </span>
-              )}
+              <div className={`flex min-w-0 flex-col ${isYou ? "items-end" : "items-start"}`}>
+                <div className={`mb-1 flex items-center gap-2 px-1 ${isYou ? "flex-row-reverse" : "flex-row"}`}>
+                  <span className="text-sm font-semibold text-foreground">
+                    {senderLabel}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {formatMessageTime(msg.timestamp)}
+                  </span>
+                </div>
 
-              {/* Message bubble */}
-              <div
-                className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm transition-all
-                  ${
+                {isYou && recipientLabels.length > 0 && (
+                  <span className="mb-1 px-1 text-[11px] text-muted-foreground">
+                    To {recipientLabels.join(" ")}
+                  </span>
+                )}
+
+                <div
+                  className={`rounded-2xl border px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-all ${
                     isYou
-                      ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-muted text-foreground rounded-bl-sm"
-                  }
-                `}
-              >
-                {msg.content}
+                      ? "rounded-br-sm border-primary/15 bg-primary text-primary-foreground"
+                      : "rounded-bl-sm border-border bg-card text-foreground"
+                  }`}
+                >
+                  {msg.content}
+                </div>
               </div>
-
-              {/* Timestamp */}
-              <span
-                className={`text-[10px] mt-1 px-1 ${
-                  isYou
-                    ? "text-right text-muted-foreground"
-                    : "text-left text-muted-foreground"
-                }`}
-              >
-                {msg.timestamp
-                  ? new Date(msg.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : ""}
-              </span>
             </div>
           </div>
         );
