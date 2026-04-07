@@ -248,10 +248,12 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         if (msg.isCode) return null;
 
         const isYou = msg.sender === "you";
-        const recipientPeer = msg.target_peer_ids?.length === 1
-          ? peers.find((peer) => peer.identifier === msg.target_peer_ids?.[0])
-          : null;
-        const recipientLabel = recipientPeer ? recipientPeer.label || recipientPeer.identifier : null;
+        const recipientLabels = msg.target_peer_ids?.length
+          ? msg.target_peer_ids.map((peerId) => {
+              const peer = peers.find((item) => item.identifier === peerId);
+              return `@${peer?.label || peer?.identifier || peerId}`;
+            })
+          : [];
 
         return (
           <div
@@ -267,9 +269,9 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
                 </span>
               )}
 
-              {isYou && recipientLabel && (
+              {isYou && recipientLabels.length > 0 && (
                 <span className="mb-1 px-1 text-[11px] text-muted-foreground">
-                  To {recipientLabel}
+                  To {recipientLabels.join(" ")}
                 </span>
               )}
 
