@@ -144,6 +144,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   const parseOutgoingMessage = (content: string) => {
     let remainder = content.trimStart();
     let lastResolvedPeer: DeviceDescriptor | null = null;
+    let consumedAnyMention = false;
 
     while (remainder.startsWith("@")) {
       const match = remainder.match(/^@([^\s@]+)/);
@@ -152,10 +153,12 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         break;
       }
 
+      consumedAnyMention = true;
       const resolvedPeer = resolvePeerFromAlias(match[1]);
 
       if (!resolvedPeer) {
-        break;
+        remainder = remainder.slice(match[0].length).trimStart();
+        continue;
       }
 
       lastResolvedPeer = resolvedPeer;
@@ -169,11 +172,9 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       };
     }
 
-    const visibleMention = `@${lastResolvedPeer.label || lastResolvedPeer.identifier}`;
-
     return {
       targetPeerIds: [lastResolvedPeer.identifier],
-      normalizedContent: remainder ? `${visibleMention} ${remainder}` : visibleMention,
+      normalizedContent: remainder || (consumedAnyMention ? "" : content.trim()),
     };
   };
 
