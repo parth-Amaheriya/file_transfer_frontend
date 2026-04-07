@@ -29,7 +29,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
   const mentionContext = useMemo(() => {
     const beforeCaret = input.slice(0, caretPosition);
-    const match = beforeCaret.match(/(^|\s)@([^\s@]*)$/);
+    const match = beforeCaret.match(/(^|[\s@])@([^\s@]*)$/);
 
     if (!match) {
       return null;
@@ -117,94 +117,71 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     updateInput(nextValue, nextCaret);
   };
 
-  const stripLeadingMention = (content: string, targetPeerIds: string[]) => {
-    if (targetPeerIds.length === 0) {
-      return content.trim();
+  const resolvePeerFromAlias = (alias: string) => {
+    const normalizedAlias = alias.trim().toLowerCase();
+
+    if (!normalizedAlias) {
+      return null;
     }
 
-    const targetPeers = targetPeerIds
-      .map((peerId) => peers.find((peer) => peer.identifier === peerId))
-      .filter((peer): peer is DeviceDescriptor => Boolean(peer));
-
-    const aliases = targetPeers
-      .flatMap((peer) => [peer.label, peer.identifier])
-      .filter((alias): alias is string => Boolean(alias))
-      .sort((left, right) => right.length - left.length);
-
-    const trimmedContent = content.trimStart();
-
-    for (const alias of aliases) {
-      const prefix = `@${alias.toLowerCase()}`;
-      if (!trimmedContent.toLowerCase().startsWith(prefix)) {
-        continue;
-      }
-
-      const nextChar = trimmedContent.slice(prefix.length, prefix.length + 1);
-      if (nextChar && !/\s|,|\.|!|\?|:|;/.test(nextChar)) {
-        continue;
-      }
-
-      const stripped = trimmedContent.slice(prefix.length).trimStart();
-      return stripped || trimmedContent;
-    }
-
-    const stripped = trimmedContent.replace(/^@[^\s]+\s*/, "").trimStart();
-    return stripped || trimmedContent;
-  };
-
-  const resolveTargetPeerIds = (content: string) => {
-    const trimmed = content.trimStart();
-
-    if (!trimmed.startsWith("@")) {
-      return [] as string[];
-    }
-
-    const normalized = trimmed.toLowerCase();
-    const candidates = peers
-      .flatMap((peer) => {
-        const aliases = [peer.label, peer.identifier].filter((alias): alias is string => Boolean(alias));
-        return aliases.map((alias) => ({ peer, alias }));
-      })
-      .sort((left, right) => right.alias.length - left.alias.length);
-
-    for (const candidate of candidates) {
-      const alias = candidate.alias.trim();
-      if (!alias) {
-        continue;
-      }
-
-      const prefix = `@${alias.toLowerCase()}`;
-      if (!normalized.startsWith(prefix)) {
-        continue;
-      }
-
-      const nextChar = trimmed.slice(prefix.length, prefix.length + 1);
-      if (nextChar && !/\s|,|\.|!|\?|:|;/.test(nextChar)) {
-        continue;
-      }
-
-      return [candidate.peer.identifier];
-    }
-
-    const handle = trimmed.slice(1).split(/\s+/)[0].toLowerCase();
-    if (!handle) {
-      return [] as string[];
-    }
-
-    const matches = peers.filter((peer) => {
-      const aliases = [peer.label, peer.identifier].filter((alias): alias is string => Boolean(alias));
-      return aliases.some((alias) => alias.toLowerCase().startsWith(handle));
+    const exactMatch = peers.find((peer) => {
+      const aliases = [peer.label, peer.identifier].filter((value): value is string => Boolean(value));
+      return aliases.some((value) => value.toLowerCase() === normalizedAlias);
     });
 
-    return matches.length === 1 ? [matches[0].identifier] : [] as string[];
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    const prefixMatches = peers.filter((peer) => {
+      const aliases = [peer.label, peer.identifier].filter((value): value is string => Boolean(value));
+      return aliases.some((value) => value.toLowerCase().startsWith(normalizedAlias));
+    });
+
+    return prefixMatches.length === 1 ? prefixMatches[0] : null;
+  };
+
+  const parseOutgoingMessage = (content: string) => {
+    let remainder = content.trimStart();
+    let lastResolvedPeer: DeviceDescriptor | null = null;
+
+    while (remainder.startsWith("@")) {
+      const match = remainder.match(/^@([^\s@]+)/);
+
+      if (!match) {
+        break;
+      }
+
+      const resolvedPeer = resolvePeerFromAlias(match[1]);
+
+      if (!resolvedPeer) {
+        break;
+      }
+
+      lastResolvedPeer = resolvedPeer;
+      remainder = remainder.slice(match[0].length).trimStart();
+    }
+
+    if (!lastResolvedPeer) {
+      return {
+        targetPeerIds: [] as string[],
+        normalizedContent: content.trim(),
+      };
+    }
+
+    const visibleMention = `@${lastResolvedPeer.label || lastResolvedPeer.identifier}`;
+
+    return {
+      targetPeerIds: [lastResolvedPeer.identifier],
+      normalizedContent: remainder ? `${visibleMention} ${remainder}` : visibleMention,
+    };
   };
 
   const send = () => {
     if (!input.trim()) return;
 
-    const targetPeerIds = resolveTargetPeerIds(input);
-    const outboundContent = stripLeadingMention(input, targetPeerIds);
-    onSendMessage(outboundContent, targetPeerIds);
+    const { targetPeerIds, normalizedContent } = parseOutgoingMessage(input);
+    onSendMessage(normalizedContent, targetPeerIds);
     setInput("");
     setCaretPosition(0);
     setEmojiPickerOpen(false);
