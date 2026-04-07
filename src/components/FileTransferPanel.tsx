@@ -185,7 +185,12 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                   className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/15 bg-primary/5 px-2 py-1 text-left transition-colors hover:bg-primary/10"
                   title={`Remove ${displayName}`}
                 >
-                  <span className="h-4.5 w-4.5 rounded-full bg-primary text-[9px] font-semibold uppercase text-primary-foreground flex items-center justify-center shrink-0">
+                  <span className="flex items-center justify-center 
+             h-5 w-5 rounded-full 
+             bg-primary text-primary-foreground 
+             text-[10px] font-semibold uppercase 
+             shrink-0 leading-none 
+             ring-1 ring-border">
                     {displayName.slice(0, 1)}
                   </span>
                   <span className="truncate text-[11px] font-medium text-foreground max-w-[110px]">
@@ -249,9 +254,8 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                         handlePeerSelect(peer.identifier);
                       }}
                       aria-pressed={checked}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
-                        checked ? "bg-primary/5" : "hover:bg-secondary/40"
-                      }`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${checked ? "bg-primary/5" : "hover:bg-secondary/40"
+                        }`}
                     >
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold uppercase ${checked ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
                         {initials || displayName.slice(0, 1).toUpperCase()}
@@ -322,9 +326,9 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                 {file.status === "sending" && <ArrowUp className="h-4 w-4 text-primary" />}
                 {file.status === "receiving" && <ArrowDown className="h-4 w-4 text-primary" />}
                 {isTransferring && onCancelTransfer && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => onCancelTransfer(file.id)}
                     className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
                     title="Cancel transfer"
