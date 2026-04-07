@@ -873,6 +873,7 @@ const Session = () => {
               pairing.status === "pending" ? "waiting" : "connecting"
             }
             onDisconnect={handleDisconnect}
+            userName={deviceName.trim() || "My Device"}
             peers={livePeers}
             peerCount={livePeers.length}
           />
