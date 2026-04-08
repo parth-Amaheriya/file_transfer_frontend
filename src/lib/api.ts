@@ -121,6 +121,30 @@ export const api = {
     return response.json();
   },
 
+  subscribeToPairingUpdates(code: string, onUpdate: (data: PairingCodeOut) => void, onError?: (error: Event) => void): EventSource {
+    const eventSource = new EventSource(`${API_BASE}/api/pairing/${code}/events`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === "pairing_update") {
+          onUpdate(parsed.data);
+        }
+      } catch (error) {
+        console.error("Failed to parse SSE data:", error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
+      if (onError) {
+        onError(error);
+      }
+    };
+
+    return eventSource;
+  },
+
   createWebSocket(pairingId: string, deviceId: string): WebSocket {
     const wsUrl = API_BASE.replace(/^http/, 'ws');
     return new WebSocket(`${wsUrl}/ws/pairing/${pairingId}/${deviceId}`);

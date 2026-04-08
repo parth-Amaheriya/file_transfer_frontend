@@ -302,48 +302,35 @@ const Session = () => {
     }
   }, [joinCode, pairing]);
 
-  // Poll for pairing status updates for the initiating device
+  // Subscribe to real-time pairing updates via SSE
   useEffect(() => {
-    if (pairing && !joinCode && pairing.status === "pending") {
-      console.log('Starting pairing status polling for initiator');
-      const pollInterval = setInterval(async () => {
-        try {
-          const updatedPairing = await api.getPairing(pairing.code);
-          console.log('Polled pairing status:', updatedPairing.status);
-          if (updatedPairing.status !== pairing.status) {
-            console.log(`Pairing status changed from ${pairing.status} to ${updatedPairing.status}`);
-            setPairing(updatedPairing);
-          }
-        } catch (error) {
-          console.error("Failed to poll pairing status:", error);
-        }
-      }, 2000); // Poll every 2 seconds
-
-      return () => clearInterval(pollInterval);
+    if (!pairing) {
+      return;
     }
-  }, [pairing, joinCode]);
 
-  // Poll for peer updates - refresh peer list for all connected devices
-  useEffect(() => {
-    if (pairing && (pairing.status === "active" || pairing.status === "connected")) {
-      console.log('Starting peer list polling');
-      const pollInterval = setInterval(async () => {
-        try {
-          const updatedPairing = await api.getPairing(pairing.code);
-          // Update if peer count or peer list changed
-          if ((updatedPairing.peer_count || 0) !== (pairing.peer_count || 0) ||
-              JSON.stringify(updatedPairing.peers) !== JSON.stringify(pairing.peers)) {
-            console.log(`Peer count updated: ${updatedPairing.peer_count || 0}`);
-            setPairing(updatedPairing);
-          }
-        } catch (error) {
-          console.error("Failed to poll peer updates:", error);
+    console.log('Starting SSE subscription for pairing updates');
+    const eventSource = api.subscribeToPairingUpdates(
+      pairing.code,
+      (updatedPairing) => {
+        console.log('Received SSE pairing update:', updatedPairing.status);
+        if (updatedPairing.status !== pairing.status ||
+            (updatedPairing.peer_count || 0) !== (pairing.peer_count || 0) ||
+            JSON.stringify(updatedPairing.peers) !== JSON.stringify(pairing.peers)) {
+          console.log(`Pairing updated: status=${updatedPairing.status}, peers=${updatedPairing.peer_count || 0}`);
+          setPairing(updatedPairing);
         }
-      }, 1500); // Poll every 1.5 seconds for faster disconnection detection
+      },
+      (error) => {
+        console.error("SSE connection failed, falling back to polling:", error);
+        // Could implement fallback polling here if needed
+      }
+    );
 
-      return () => clearInterval(pollInterval);
-    }
-  }, [pairing?.code, pairing?.status]);
+    return () => {
+      console.log('Closing SSE connection');
+      eventSource.close();
+    };
+  }, [pairing?.code]); // Only depend on pairing code, not the whole pairing object
 
   useEffect(() => {
     if (!pairing || pairing.status === "pending") {
