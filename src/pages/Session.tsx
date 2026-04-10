@@ -269,6 +269,35 @@ const Session = () => {
   }, [pairing, deviceId, deviceName]);
 
   useEffect(() => {
+    if (!pairing) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const validateStoredPairing = async () => {
+      try {
+        const freshPairing = await api.getPairing(pairing.code);
+        if (!cancelled) {
+          setPairing(freshPairing);
+        }
+      } catch (error) {
+        console.warn("Stored pairing is no longer valid, resetting session state:", error);
+        sessionStorage.removeItem("pairing");
+        if (!cancelled) {
+          setPairing(null);
+        }
+      }
+    };
+
+    void validateStoredPairing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const liveRemotePeerIds = [pairing?.initiator, ...(pairing?.peers || [])]
       .filter((participant): participant is DeviceDescriptor => Boolean(participant))
       .filter((participant) => participant.identifier !== deviceId)
