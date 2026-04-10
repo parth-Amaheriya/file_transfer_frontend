@@ -7,9 +7,9 @@ const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
 const isFileSystemAccessAvailable = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
 
 const GOOGLE_STUN_SERVER = 'stun:stun.l.google.com:19302';
-const PUBLIC_TURN_SERVER = 'turn:openrelay.metered.ca:80';
-const TURN_USERNAME = 'openrelayproject';
-const TURN_CREDENTIAL = 'openrelayproject';
+const PUBLIC_TURN_SERVER = 'turn:turn.bistri.com:80';
+const TURN_USERNAME = 'homeo';
+const TURN_CREDENTIAL = 'homeo';
 const DOWNLOADED_FILE_IDS_KEY = 'downloadedFileIds';
 
 export interface FileTransferProgress {
