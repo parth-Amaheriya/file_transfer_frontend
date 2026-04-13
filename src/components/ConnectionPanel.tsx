@@ -14,7 +14,7 @@ interface ConnectionPanelProps {
 
 const statusConfig = {
   waiting: { label: "Waiting for peer", color: "bg-muted-foreground", icon: WifiOff },
-  connecting: { label: "Connecting...", color: "bg-amber-500", icon: Loader2 },
+  connecting: { label: "Connecting...", color: "bg-primary", icon: Loader2 },
   connected: { label: "Direct P2P Connected", color: "bg-accent", icon: Wifi },
   failed: { label: "Connection Failed", color: "bg-destructive", icon: WifiOff },
 };
@@ -74,7 +74,7 @@ const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, p
         </p>
         <div className="flex items-center gap-3">
           <span className={`h-2.5 w-2.5 rounded-full ${cfg.color}`} />
-          <StatusIcon className={`h-4 w-4 text-muted-foreground ${status === "connecting" ? "animate-spin" : ""}`} />
+          <StatusIcon className={`h-4 w-4 ${status === "connecting" ? "text-primary animate-spin" : "text-muted-foreground"}`} />
           <span className="text-sm text-foreground">{cfg.label}</span>
         </div>
       </div>
