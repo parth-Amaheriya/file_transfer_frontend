@@ -93,6 +93,9 @@ const Session = () => {
   const markedFilesUnreadRef = useRef<Set<string>>(new Set());
   const peerSelectionInitializedRef = useRef(false);
   const peerSelectionTouchedRef = useRef(false);
+  const loaderStartRef = useRef<number | null>(pairing ? null : Date.now());
+  const loaderHideTimerRef = useRef<number | null>(null);
+  const [showLoader, setShowLoader] = useState(() => !pairing);
 
   const getConnectedPeerManagers = (peerIds?: string[]): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())
@@ -268,6 +271,47 @@ const Session = () => {
     sessionStorage.setItem("deviceId", deviceId);
     sessionStorage.setItem("deviceName", deviceName);
   }, [pairing, deviceId, deviceName]);
+
+  useEffect(() => {
+    if (loaderHideTimerRef.current !== null) {
+      window.clearTimeout(loaderHideTimerRef.current);
+      loaderHideTimerRef.current = null;
+    }
+
+    if (!pairing) {
+      if (loaderStartRef.current === null) {
+        loaderStartRef.current = Date.now();
+      }
+      setShowLoader(true);
+      return;
+    }
+
+    if (loaderStartRef.current === null) {
+      setShowLoader(false);
+      return;
+    }
+
+    const elapsed = Date.now() - loaderStartRef.current;
+    const remaining = Math.max(0, 1000 - elapsed);
+
+    if (remaining === 0) {
+      loaderStartRef.current = null;
+      setShowLoader(false);
+      return;
+    }
+
+    loaderHideTimerRef.current = window.setTimeout(() => {
+      loaderStartRef.current = null;
+      setShowLoader(false);
+    }, remaining);
+
+    return () => {
+      if (loaderHideTimerRef.current !== null) {
+        window.clearTimeout(loaderHideTimerRef.current);
+        loaderHideTimerRef.current = null;
+      }
+    };
+  }, [pairing]);
 
   useEffect(() => {
     if (!pairing) {
@@ -842,7 +886,7 @@ const Session = () => {
     navigate("/");
   };
 
-  if (!pairing) {
+  if (!pairing || showLoader) {
       return (
         <div className="min-h-screen relative flex items-center justify-center px-4">
           <BackgroundEffects />
