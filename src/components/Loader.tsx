@@ -8,9 +8,11 @@ interface LoaderProps {
   size?: LoaderSize;
 }
 
-const Loader = ({ className, label = "Loading", size = "md" }: LoaderProps) => {
+const Loader = ({ className, label, size = "md" }: LoaderProps) => {
+  const ariaLabel = label || "Loading";
+
   return (
-    <div className={cn("space-loader", className)} data-size={size} role="status" aria-label={label}>
+    <div className={cn("space-loader", className)} data-size={size} role="status" aria-label={ariaLabel}>
       <div className="space-loader__stage" aria-hidden="true">
         <div className="space-loader__ship">
           <span>
@@ -31,7 +33,6 @@ const Loader = ({ className, label = "Loading", size = "md" }: LoaderProps) => {
           <span />
         </div>
       </div>
-      {label ? <p className="space-loader__label">{label}</p> : null}
     </div>
   );
 };

@@ -100,7 +100,7 @@
 
 @layer components {
   .space-loader {
-    @apply relative inline-flex flex-col items-center justify-center gap-4 text-center select-none;
+    @apply relative inline-flex flex-col items-center justify-center select-none;
   }
 
   .space-loader__stage {
@@ -126,18 +126,18 @@
     margin-left: -50px;
     margin-top: -18px;
     animation: space-loader-speeder 0.4s linear infinite;
-    filter: drop-shadow(0 0 16px hsl(var(--primary) / 0.2));
+    filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.15));
   }
 
   .space-loader__ship > span {
     height: 5px;
     width: 35px;
-    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--accent)));
+    background: #000;
     position: absolute;
     top: -19px;
     left: 60px;
     border-radius: 2px 10px 1px 0;
-    box-shadow: 0 0 12px hsl(var(--primary) / 0.22);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
   }
 
   .space-loader__base span {
@@ -145,7 +145,7 @@
     width: 0;
     height: 0;
     border-top: 6px solid transparent;
-    border-right: 100px solid hsl(var(--primary));
+    border-right: 100px solid #000;
     border-bottom: 6px solid transparent;
   }
 
@@ -154,11 +154,11 @@
     height: 22px;
     width: 22px;
     border-radius: 50%;
-    background: hsl(var(--accent));
+    background: #000;
     position: absolute;
     right: -110px;
     top: -16px;
-    box-shadow: 0 0 14px hsl(var(--accent) / 0.25);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
   }
 
   .space-loader__base span::after {
@@ -167,7 +167,7 @@
     width: 0;
     height: 0;
     border-top: 0 solid transparent;
-    border-right: 55px solid hsl(var(--primary));
+    border-right: 55px solid #000;
     border-bottom: 16px solid transparent;
     top: -16px;
     right: -98px;
@@ -177,19 +177,19 @@
     position: absolute;
     height: 12px;
     width: 20px;
-    background: hsl(var(--primary));
+    background: #000;
     border-radius: 20px 20px 0 0;
     transform: rotate(-40deg);
     right: -125px;
     top: -15px;
-    box-shadow: 0 0 10px hsl(var(--primary) / 0.24);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
   }
 
   .space-loader__face::after {
     content: "";
     height: 12px;
     width: 12px;
-    background: hsl(var(--primary));
+    background: #000;
     right: 4px;
     top: 7px;
     position: absolute;
@@ -204,7 +204,7 @@
   .space-loader__ship > span > span:nth-child(4) {
     width: 30px;
     height: 1px;
-    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--accent)));
+    background: #000;
     position: absolute;
     animation: space-loader-fazer-1 0.2s linear infinite;
   }
@@ -236,8 +236,8 @@
     position: absolute;
     height: 2px;
     width: 20%;
-    background: linear-gradient(90deg, hsl(var(--primary) / 0.1), hsl(var(--primary)), hsl(var(--accent)));
-    box-shadow: 0 0 12px hsl(var(--primary) / 0.12);
+    background: #000;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.08);
   }
 
   .space-loader__longfazers span:nth-child(1) {
@@ -261,10 +261,6 @@
     top: 80%;
     animation: space-loader-longfazer-4 0.5s linear infinite;
     animation-delay: -3s;
-  }
-
-  .space-loader__label {
-    @apply text-xs font-medium uppercase tracking-[0.28em] text-muted-foreground;
   }
 
   @keyframes space-loader-fazer-1 {

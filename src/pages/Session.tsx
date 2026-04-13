@@ -888,18 +888,8 @@ const Session = () => {
 
   if (!pairing || showLoader) {
       return (
-        <div className="min-h-screen relative flex items-center justify-center px-4">
-          <BackgroundEffects />
-          <div className="surface-elevated w-full max-w-lg rounded-2xl px-6 py-10 text-center space-y-6 animate-fade-in">
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-[0.35em] text-muted-foreground">Nexdrop</p>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Setting up your session</h1>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Preparing the secure peer-to-peer channel and syncing your session state.
-              </p>
-            </div>
-            <Loader label="Connecting" className="mx-auto" />
-          </div>
+        <div className="min-h-screen flex items-center justify-center bg-[#ececec]">
+          <Loader />
         </div>
       );
   }
