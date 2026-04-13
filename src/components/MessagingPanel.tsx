@@ -416,11 +416,9 @@
 // };
 
 // export default MessagingPanel;
-
-
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
-import { Smile, Send } from "lucide-react";
+import { Send, Smile } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -658,22 +656,27 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   return (
-    <div className="flex h-[560px] flex-col rounded-xl border border-border bg-background shadow-xs overflow-hidden">
+    <div className="flex h-screen flex-col bg-background border border-border rounded-lg shadow-xs overflow-hidden">
       
       {/* Header */}
-      <div className="border-b border-border bg-muted/30 px-4 py-3">
-        <h2 className="text-base font-semibold text-foreground">Messages</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{visibleMessages.length} conversation{visibleMessages.length !== 1 ? "s" : ""}</p>
+      <div className="border-b border-border px-8 py-6">
+        <h2 className="text-lg font-semibold text-foreground">Team Conversation</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {peers.length} participant{peers.length !== 1 ? "s" : ""} • {visibleMessages.length} message{visibleMessages.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
       {/* Messages Container */}
       <div 
         ref={scrollRef} 
-        className="flex-1 space-y-3 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border"
+        className="flex-1 overflow-y-auto px-8 py-8 space-y-8 scrollbar-thin"
       >
         {visibleMessages.length === 0 && (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No messages yet
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <p className="text-base text-muted-foreground">No messages yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">Start the conversation by sending a message</p>
+            </div>
           </div>
         )}
 
@@ -681,15 +684,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           // System message - file cancel
           if (msg.type === "file_cancel") {
             return (
-              <div key={index} className="flex justify-center py-1">
-                <div className="inline-flex items-center gap-1 rounded-full bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground border border-border/50">
-                  {msg.sender !== "you" && (
-                    <span className="font-medium">
-                      {msg.senderName || "Peer"}:
-                    </span>
-                  )}
-                  <span>{msg.content || `File cancelled${msg.filename ? `: ${msg.filename}` : ""}`}</span>
-                </div>
+              <div key={index} className="flex justify-center py-2">
+                <p className="text-xs text-muted-foreground">
+                  {msg.senderName || "Peer"} cancelled file share{msg.filename ? `: ${msg.filename}` : ""}
+                </p>
               </div>
             );
           }
@@ -709,41 +707,41 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           return (
             <div
               key={index}
-              className={`flex gap-3 ${isYou ? "justify-end" : "justify-start"}`}
+              className={`flex gap-4 ${isYou ? "justify-end" : "justify-start"}`}
             >
-              <div className={`flex max-w-xs gap-3 ${isYou ? "flex-row-reverse" : "flex-row"}`}>
-                {!isYou && (
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted border border-border text-[10px] font-semibold text-muted-foreground">
-                    {senderInitials || "P"}
-                  </div>
+              {!isYou && (
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted border border-border text-xs font-semibold text-muted-foreground">
+                  {senderInitials || "P"}
+                </div>
+              )}
+
+              <div className={`flex flex-col gap-1.5 max-w-md ${isYou ? "items-end" : "items-start"}`}>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {senderLabel}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatMessageTime(msg.timestamp)}
+                  </p>
+                </div>
+
+                {isYou && recipientLabels.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    To {recipientLabels.join(" ")}
+                  </p>
                 )}
 
-                <div className={`flex min-w-0 flex-col gap-1 ${isYou ? "items-end" : "items-start"}`}>
-                  <div className={`flex items-center gap-2 px-1 text-xs ${isYou ? "flex-row-reverse" : "flex-row"}`}>
-                    <span className="text-xs font-medium text-foreground">
-                      {senderLabel}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                      {formatMessageTime(msg.timestamp)}
-                    </span>
+                {isYou ? (
+                  <div className="bg-muted border border-border rounded-lg px-4 py-3">
+                    <p className="text-sm text-foreground leading-relaxed">
+                      {msg.content}
+                    </p>
                   </div>
-
-                  {isYou && recipientLabels.length > 0 && (
-                    <span className="px-1 text-[11px] text-muted-foreground">
-                      To {recipientLabels.join(" ")}
-                    </span>
-                  )}
-
-                  <div
-                    className={`rounded-lg border px-3 py-2 text-sm leading-relaxed shadow-xs transition-colors ${
-                      isYou
-                        ? "bg-primary text-primary-foreground border-primary/20"
-                        : "bg-muted border-border text-foreground"
-                    }`}
-                  >
+                ) : (
+                  <p className="text-sm text-foreground leading-relaxed max-w-prose">
                     {msg.content}
-                  </div>
-                </div>
+                  </p>
+                )}
               </div>
             </div>
           );
@@ -751,15 +749,15 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-border bg-background px-3 py-3">
+      <div className="border-t border-border bg-background px-8 py-6">
         <div className="relative">
           {/* Mention Suggestions */}
           {mentionContext && mentionSuggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
-              <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
+              <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
                 Send to
               </div>
-              <div className="max-h-48 overflow-y-auto">
+              <div className="max-h-56 overflow-y-auto">
                 {mentionSuggestions.map((peer, index) => {
                   const label = peer.label || peer.identifier;
                   const isActive = index === suggestionIndex;
@@ -772,10 +770,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
                         event.preventDefault();
                         selectPeerSuggestion(peer);
                       }}
-                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors ${
+                      className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors ${
                         isActive 
                           ? "bg-muted" 
-                          : "hover:bg-muted/60"
+                          : "hover:bg-muted/50"
                       }`}
                     >
                       <span className="font-medium text-foreground">{label}</span>
@@ -793,7 +791,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full right-0 z-20 mb-2 overflow-hidden rounded-lg border border-border bg-background shadow-lg"
+              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-lg border border-border bg-background shadow-lg"
             >
               <Picker
                 data={data}
@@ -808,7 +806,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           )}
 
           {/* Input Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Input
               ref={inputRef}
               value={input}
@@ -820,8 +818,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onSelect={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
-              placeholder="Type a message or @name..."
-              className="flex-1 rounded-lg border border-border px-3.5 py-2.5 text-sm transition-colors focus:border-primary/30 focus:outline-none"
+              placeholder="Write a message..."
+              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
             />
 
             <Button
@@ -830,7 +828,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               variant="outline"
               size="sm"
               onClick={() => setEmojiPickerOpen((current) => !current)}
-              className="rounded-lg px-2.5 h-9"
+              className="rounded-lg h-10 w-10 p-0"
             >
               <Smile className="h-4 w-4" />
             </Button>
@@ -839,7 +837,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               type="button"
               onClick={send}
               size="sm"
-              className="rounded-lg px-3 h-9"
+              className="rounded-lg h-10 px-4"
             >
               <Send className="h-4 w-4" />
             </Button>
