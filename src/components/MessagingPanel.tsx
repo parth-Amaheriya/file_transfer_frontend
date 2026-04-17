@@ -74,7 +74,14 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   }, [mentionContext, peers]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    // Use a small delay to ensure DOM has updated
+    const scrollTimer = setTimeout(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, 0);
+    
+    return () => clearTimeout(scrollTimer);
   }, [messages]);
 
   useEffect(() => {
@@ -381,7 +388,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
             <Button
               type="button"
               onClick={send}
-              className="h-11 w-11 rounded-full bg-[#ff7a21] p-0 text-white shadow-[0_10px_18px_rgba(255,122,33,0.35)] hover:bg-[#ff8a3b]"
+              className="h-11 w-11 rounded-full bg-primary p-0 text-white  hover:bg-[#ff8a3b]"
             >
               <Send className="h-4 w-4 -rotate-12" />
             </Button>
