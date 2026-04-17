@@ -960,22 +960,22 @@ const Session = () => {
                 return updated;
               });
             }} className="flex flex-col flex-1 min-h-0">
-              <TabsList className="bg-secondary mb-6">
-                <TabsTrigger value="files" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
+              <TabsList className="mb-6 w-fit rounded-2xl bg-[#ece6de] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
+                <TabsTrigger value="files" className="relative gap-2 rounded-xl px-4 py-2 text-[15px] font-medium text-[#8f8477] data-[state=active]:bg-white data-[state=active]:text-[#3f362d] data-[state=active]:shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
                   <FileText className="h-3.5 w-3.5" />
                   Files
                   {unreadTabs.has("files") && (
                     <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
+                <TabsTrigger value="messages" className="relative gap-2 rounded-xl px-4 py-2 text-[15px] font-medium text-[#8f8477] data-[state=active]:bg-white data-[state=active]:text-[#3f362d] data-[state=active]:shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
                   <MessageCircle className="h-3.5 w-3.5" />
                   Messages
                   {unreadTabs.has("messages") && (
                     <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
+                <TabsTrigger value="code" className="relative gap-2 rounded-xl px-4 py-2 text-[15px] font-medium text-[#8f8477] data-[state=active]:bg-white data-[state=active]:text-[#3f362d] data-[state=active]:shadow-[0_1px_4px_rgba(0,0,0,0.08)]">
                   <Code2 className="h-3.5 w-3.5" />
                   Code
                   {unreadTabs.has("code") && (
