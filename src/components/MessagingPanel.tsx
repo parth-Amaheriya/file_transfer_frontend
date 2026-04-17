@@ -274,7 +274,7 @@ const MessagingPanel = ({
 
             <Button
               onClick={send}
-              className="h-10 w-10 rounded-full bg-orange-500 p-0 hover:bg-orange-600"
+              className="h-10 w-10 rounded-full bg-primary p-0 hover:bg-primary/90"
             >
               <Send className="h-4 w-4 -rotate-12 text-white" />
             </Button>
