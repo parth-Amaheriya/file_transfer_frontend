@@ -1008,6 +1008,7 @@ const Session = () => {
             </Tabs>
           </div>
         </div>
+        </div>
       </main>
     </div>
   );
