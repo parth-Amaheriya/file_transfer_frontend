@@ -175,11 +175,14 @@ const MessagingPanel = ({
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
-      {/* ✅ SCROLLABLE MESSAGE PANEL */}
+    <div className="flex h-full w-full flex-col overflow-hidden bg-white">
+      {/* ✅ SCROLLABLE MESSAGE PANEL - ONLY THIS SCROLLS */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-3 scrollbar-thin scrollbar-thumb-gray-300"
+        className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden px-2 py-3"
+        style={{
+          scrollBehavior: "smooth",
+        }}
       >
         {visibleMessages.length === 0 && (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

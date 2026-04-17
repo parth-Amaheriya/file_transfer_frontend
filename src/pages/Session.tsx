@@ -914,10 +914,10 @@ const Session = () => {
           : connectionState;
 
   return (
-    <div className="min-h-screen relative">
+    <div className="flex flex-col h-screen relative">
       <BackgroundEffects />
 
-      <header className="border-b border-border bg-card sticky top-0 z-10">
+      <header className="border-b border-border bg-card sticky top-0 z-10 flex-shrink-0">
         <div className="container max-w-6xl flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={handleDisconnect}>
@@ -929,9 +929,10 @@ const Session = () => {
         </div>
       </header>
 
-      <main className="container max-w-6xl px-4 py-8">
-        <div className="grid lg:grid-cols-[300px_1fr] gap-6">
-          <ConnectionPanel
+      <main className="flex-1 min-h-0 flex flex-col">
+        <div className="container max-w-6xl px-4 py-4 flex-1 min-h-0 flex flex-col">
+          <div className="grid lg:grid-cols-[300px_1fr] gap-6 flex-1 min-h-0">
+            <ConnectionPanel
             pairingCode={pairing.code}
             status={
               liveConnectionState === "connected" ? "connected" :
@@ -944,7 +945,7 @@ const Session = () => {
             peerCount={livePeers.length}
           />
 
-          <div className="surface-elevated rounded-xl p-6">
+          <div className="surface-elevated rounded-xl p-6 flex flex-col min-h-0 flex-1">
             <Tabs value={activeTab} onValueChange={(value) => {
               setActiveTab(value);
               setUnreadTabs(prev => {
@@ -958,7 +959,7 @@ const Session = () => {
                 
                 return updated;
               });
-            }}>
+            }} className="flex flex-col flex-1 min-h-0">
               <TabsList className="bg-secondary mb-6">
                 <TabsTrigger value="files" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
                   <FileText className="h-3.5 w-3.5" />
@@ -983,7 +984,7 @@ const Session = () => {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="files">
+              <TabsContent value="files" className="flex-1 min-h-0">
                 <FileTransferPanel
                   peers={selectablePeers}
                   selectedPeerIds={selectedPeerIds}
@@ -997,11 +998,11 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="messages">
+              <TabsContent value="messages" className="flex-1 min-h-0">
                 <MessagingPanel messages={messages} peers={livePeers} onSendMessage={sendMessage} />
               </TabsContent>
 
-              <TabsContent value="code">
+              <TabsContent value="code" className="flex-1 min-h-0">
                 <CodeSnippetPanel onSendCode={sendCode} messages={messages} />
               </TabsContent>
             </Tabs>
