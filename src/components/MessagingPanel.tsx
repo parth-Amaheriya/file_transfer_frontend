@@ -3,7 +3,7 @@
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { Send, Smile } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type DeviceDescriptor, type Message } from "@/lib/api";
@@ -38,16 +38,6 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase();
   };
 
   const mentionContext = useMemo(() => {
@@ -210,7 +200,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     setEmojiPickerOpen(false);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape" && emojiPickerOpen) {
       setEmojiPickerOpen(false);
       return;
@@ -240,10 +230,13 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3 scrollbar-thin">
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto px-1 pb-8 pt-4 md:px-2 scrollbar-thin"
+      >
         {visibleMessages.length === 0 && (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex h-full min-h-[260px] items-center justify-center">
             <div className="text-center">
               <p className="text-base text-muted-foreground">No messages yet</p>
               <p className="mt-2 text-sm text-muted-foreground">Start the conversation by sending a message</p>
@@ -251,73 +244,66 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           </div>
         )}
 
-        {visibleMessages.map((msg, index) => {
-          // System message - file cancel
-          if (msg.type === "file_cancel") {
+        <div className="space-y-8">
+          {visibleMessages.map((msg, index) => {
+            if (msg.type === "file_cancel") {
+              return (
+                <div key={index} className="flex justify-center py-2">
+                  <p className="text-xs text-muted-foreground">
+                    {msg.senderName || "Peer"} cancelled file share{msg.filename ? `: ${msg.filename}` : ""}
+                  </p>
+                </div>
+              );
+            }
+
+            if (msg.isCode) return null;
+
+            const isYou = msg.sender === "you";
+            const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
+            const recipientLabels = msg.target_peer_ids?.length
+              ? msg.target_peer_ids.map((peerId) => {
+                  const peer = peers.find((item) => item.identifier === peerId);
+                  return `@${peer?.label || peer?.identifier || peerId}`;
+                })
+              : [];
+
             return (
-              <div key={index} className="flex justify-center py-1.5">
-                <p className="text-xs text-muted-foreground">
-                  {msg.senderName || "Peer"} cancelled file share{msg.filename ? `: ${msg.filename}` : ""}
-                </p>
+              <div key={index} className={`flex w-full ${isYou ? "justify-end" : "justify-start"}`}>
+                <div className={`flex w-full max-w-[82%] flex-col ${isYou ? "items-end" : "items-start"}`}>
+                  <p className={`mb-2 text-sm font-medium text-[#b0b4be] ${isYou ? "pr-2 text-right" : "pl-2"}`}>
+                    {senderLabel}
+                  </p>
+
+                  {isYou && recipientLabels.length > 0 && (
+                    <p className="mb-2 pr-2 text-xs text-muted-foreground">
+                      To {recipientLabels.join(" ")}
+                    </p>
+                  )}
+
+                  <div
+                    className={`rounded-[24px] px-5 py-4 shadow-[0_1px_0_rgba(255,255,255,0.45)] ${
+                      isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#3c3c3c]">
+                      {msg.content}
+                    </p>
+                    <p className="mt-2 text-sm text-[#a9adb8]">
+                      {formatMessageTime(msg.timestamp)}
+                    </p>
+                  </div>
+                </div>
               </div>
             );
-          }
-
-          if (msg.isCode) return null;
-
-          const isYou = msg.sender === "you";
-          const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
-          const recipientLabels = msg.target_peer_ids?.length
-            ? msg.target_peer_ids.map((peerId) => {
-                const peer = peers.find((item) => item.identifier === peerId);
-                return `@${peer?.label || peer?.identifier || peerId}`;
-              })
-            : [];
-          const senderInitials = getInitials(senderLabel);
-
-          return (
-            <div
-              key={index}
-              className={`flex ${isYou ? "justify-end" : "justify-start"}`}
-            >
-              {!isYou && (
-                <div className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/5 text-xs font-semibold text-muted-foreground">
-                  {senderInitials || "P"}
-                </div>
-              )}
-
-              <div className={`max-w-sm ${isYou ? "text-right" : "text-left"}`}>
-                <p className={`mb-1 text-xs font-medium text-muted-foreground ${isYou ? "text-right" : "text-left"}`}>
-                  {senderLabel}
-                </p>
-
-                <div
-                  className={`rounded-2xl px-4 py-3 ${
-                    isYou ? "bg-primary/5 text-foreground" : "bg-card text-foreground"
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed">{msg.content}</p>
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    {formatMessageTime(msg.timestamp)}
-                  </p>
-                </div>
-
-                {isYou && recipientLabels.length > 0 && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    To {recipientLabels.join(" ")}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
+          })}
+        </div>
       </div>
 
-      <div className="p-5 pt-0">
+      <div className="border-t border-black/5 px-1 pb-2 pt-4 md:px-2">
         <div className="relative">
           {mentionContext && mentionSuggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
-              <div className="border-b border-border px-4 py-3 text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
+              <div className="border-b border-black/5 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
                 Send to
               </div>
               <div className="max-h-56 overflow-y-auto p-1">
@@ -333,7 +319,9 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
                         event.preventDefault();
                         selectPeerSuggestion(peer);
                       }}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/60"}`}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                        isActive ? "bg-black/5" : "hover:bg-black/5"
+                      }`}
                     >
                       <span className="font-medium text-foreground">{label}</span>
                       {peer.label && peer.label !== peer.identifier && (
@@ -349,7 +337,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-border bg-background shadow-lg"
+              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]"
             >
               <Picker
                 data={data}
@@ -363,15 +351,17 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
             </div>
           )}
 
-          <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-            <button
+          <div className="flex items-center gap-3 rounded-[28px] border border-black/5 bg-white px-3 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+            <Button
               ref={emojiButtonRef}
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setEmojiPickerOpen((current) => !current)}
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+              className="h-10 w-10 rounded-full text-muted-foreground hover:bg-black/5 hover:text-foreground"
             >
               <Smile className="h-5 w-5" />
-            </button>
+            </Button>
 
             <Input
               ref={inputRef}
@@ -385,11 +375,15 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
               placeholder="Type a message..."
-              className="flex-1 border-0 bg-transparent px-0 text-sm text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
+              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8] focus-visible:ring-0"
             />
 
-            <Button type="button" onClick={send} size="sm" className="h-9 rounded-xl bg-primary px-4 text-primary-foreground transition-opacity hover:opacity-90">
-              <Send className="h-4 w-4" />
+            <Button
+              type="button"
+              onClick={send}
+              className="h-11 w-11 rounded-full bg-[#ff7a21] p-0 text-white shadow-[0_10px_18px_rgba(255,122,33,0.35)] hover:bg-[#ff8a3b]"
+            >
+              <Send className="h-4 w-4 -rotate-12" />
             </Button>
           </div>
         </div>
