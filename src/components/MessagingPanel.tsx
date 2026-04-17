@@ -1,13 +1,9 @@
+
+// export default MessagingPanel;
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 import { Send, Smile } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type DeviceDescriptor, type Message } from "@/lib/api";
@@ -22,51 +18,68 @@ type EmojiSelect = {
   native: string;
 };
 
-const MessagingPanel = ({
-  messages,
-  peers,
-  onSendMessage,
-}: MessagingPanelProps) => {
+const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps) => {
   const [input, setInput] = useState("");
   const [caretPosition, setCaretPosition] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
-
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
+  const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel");
 
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const formatMessageTime = (timestamp?: string | number) => {
+    if (!timestamp) {
+      return "";
+    }
 
-  const visibleMessages = messages.filter(
-    (m) => m.type === "text" || m.type === "file_cancel"
-  );
-
-  // ✅ Detect scroll position
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const threshold = 80;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-
-    setIsAtBottom(atBottom);
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
-  // ✅ Auto-scroll
-  useEffect(() => {
-    if (isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [visibleMessages, isAtBottom]);
+  const mentionContext = useMemo(() => {
+    const beforeCaret = input.slice(0, caretPosition);
+    const match = beforeCaret.match(/^\s*((?:@[^\s@]+\s*)*)@([^\s@]*)$/);
 
-  // ✅ Close emoji picker on outside click
+    if (!match) {
+      return null;
+    }
+
+    const token = match[0];
+    const tokenStart = beforeCaret.length - token.length;
+
+    return {
+      query: match[2].toLowerCase(),
+      mentionStart: tokenStart + match[1].length,
+    };
+  }, [caretPosition, input]);
+
+  const mentionSuggestions = useMemo(() => {
+    if (!mentionContext) {
+      return [] as DeviceDescriptor[];
+    }
+
+    const query = mentionContext.query;
+
+    return peers
+      .filter((peer) => {
+        const label = (peer.label || peer.identifier).toLowerCase();
+        return query.length === 0 || label.includes(query) || peer.identifier.toLowerCase().includes(query);
+      })
+      .sort((left, right) => (left.label || left.identifier).localeCompare(right.label || right.identifier))
+      .slice(0, 6);
+  }, [mentionContext, peers]);
+
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
 
       if (
         emojiPickerOpen &&
@@ -77,90 +90,114 @@ const MessagingPanel = ({
       }
     };
 
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [emojiPickerOpen]);
 
-  const formatMessageTime = (timestamp?: string | number) => {
-    if (!timestamp) return "";
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  useEffect(() => {
+    setSuggestionIndex(0);
+  }, [mentionContext?.query, mentionSuggestions.length]);
 
-  // 🧠 Mention logic
-  const mentionContext = useMemo(() => {
-    const beforeCaret = input.slice(0, caretPosition);
-    const match = beforeCaret.match(/^\s*((?:@[^\s@]+\s*)*)@([^\s@]*)$/);
+  const updateInput = (nextValue: string, nextCaretPosition: number) => {
+    setInput(nextValue);
+    setCaretPosition(nextCaretPosition);
 
-    if (!match) return null;
-
-    const token = match[0];
-    const tokenStart = beforeCaret.length - token.length;
-
-    return {
-      query: match[2].toLowerCase(),
-      mentionStart: tokenStart + match[1].length,
-    };
-  }, [input, caretPosition]);
-
-  const mentionSuggestions = useMemo(() => {
-    if (!mentionContext) return [];
-
-    return peers
-      .filter((peer) => {
-        const label = (peer.label || peer.identifier).toLowerCase();
-        return (
-          label.includes(mentionContext.query) ||
-          peer.identifier.toLowerCase().includes(mentionContext.query)
-        );
-      })
-      .slice(0, 6);
-  }, [mentionContext, peers]);
-
-  const updateInput = (value: string, caret: number) => {
-    setInput(value);
-    setCaretPosition(caret);
-
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(caret, caret);
+      inputRef.current?.setSelectionRange(nextCaretPosition, nextCaretPosition);
     });
   };
 
   const insertAtCaret = (value: string) => {
-    const start = inputRef.current?.selectionStart ?? input.length;
-    const end = inputRef.current?.selectionEnd ?? input.length;
+    const selectionStart = inputRef.current?.selectionStart ?? caretPosition ?? input.length;
+    const selectionEnd = inputRef.current?.selectionEnd ?? caretPosition ?? input.length;
+    const nextValue = `${input.slice(0, selectionStart)}${value}${input.slice(selectionEnd)}`;
 
-    const next =
-      input.slice(0, start) + value + input.slice(end);
-
-    updateInput(next, start + value.length);
+    updateInput(nextValue, selectionStart + value.length);
     setEmojiPickerOpen(false);
   };
 
   const selectPeerSuggestion = (peer: DeviceDescriptor) => {
-    if (!mentionContext) return;
+    if (!mentionContext) {
+      return;
+    }
 
-    const name = peer.label || peer.identifier;
+    const displayName = peer.label || peer.identifier;
+    const nextValue = `${input.slice(0, mentionContext.mentionStart)}@${displayName} ${input.slice(caretPosition)}`;
+    const nextCaret = mentionContext.mentionStart + displayName.length + 2;
 
-    const next =
-      input.slice(0, mentionContext.mentionStart) +
-      `@${name} ` +
-      input.slice(caretPosition);
+    updateInput(nextValue, nextCaret);
+  };
 
-    updateInput(
-      next,
-      mentionContext.mentionStart + name.length + 2
-    );
+  const resolvePeerFromAlias = (alias: string) => {
+    const normalizedAlias = alias.trim().toLowerCase();
+
+    if (!normalizedAlias) {
+      return null;
+    }
+
+    const exactMatch = peers.find((peer) => {
+      const aliases = [peer.label, peer.identifier].filter((value): value is string => Boolean(value));
+      return aliases.some((value) => value.toLowerCase() === normalizedAlias);
+    });
+
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    const prefixMatches = peers.filter((peer) => {
+      const aliases = [peer.label, peer.identifier].filter((value): value is string => Boolean(value));
+      return aliases.some((value) => value.toLowerCase().startsWith(normalizedAlias));
+    });
+
+    return prefixMatches.length === 1 ? prefixMatches[0] : null;
+  };
+
+  const parseOutgoingMessage = (content: string) => {
+    let remainder = content.trimStart();
+    const targetPeerIds: string[] = [];
+
+    while (remainder.startsWith("@")) {
+      const match = remainder.match(/^@([^\s@]+)/);
+
+      if (!match) {
+        break;
+      }
+
+      const resolvedPeer = resolvePeerFromAlias(match[1]);
+
+      if (resolvedPeer && !targetPeerIds.includes(resolvedPeer.identifier)) {
+        targetPeerIds.push(resolvedPeer.identifier);
+      }
+
+      remainder = remainder.slice(match[0].length).trimStart();
+    }
+
+    if (targetPeerIds.length === 0) {
+      return {
+        targetPeerIds: [] as string[],
+        normalizedContent: content.trim(),
+      };
+    }
+
+    return {
+      targetPeerIds,
+      normalizedContent: remainder,
+    };
   };
 
   const send = () => {
     if (!input.trim()) return;
-    onSendMessage(input.trim());
+
+    const { targetPeerIds, normalizedContent } = parseOutgoingMessage(input);
+    if (targetPeerIds.length > 0 && !normalizedContent.trim()) {
+      return;
+    }
+
+    onSendMessage(normalizedContent, targetPeerIds);
     setInput("");
     setCaretPosition(0);
+    setEmojiPickerOpen(false);
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -172,13 +209,13 @@ const MessagingPanel = ({
     if (mentionContext && mentionSuggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSuggestionIndex((i) => (i + 1) % mentionSuggestions.length);
+        setSuggestionIndex((current) => (current + 1) % mentionSuggestions.length);
         return;
       }
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSuggestionIndex((i) => (i - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+        setSuggestionIndex((current) => (current - 1 + mentionSuggestions.length) % mentionSuggestions.length);
         return;
       }
 
@@ -193,46 +230,65 @@ const MessagingPanel = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      {/* ✅ MESSAGES */}
+    <div className="flex h-full min-h-0 flex-col">
       <div
         ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-2 py-3"
+        className="flex-1 min-h-0 overflow-y-auto px-1 pb-4 pt-4 md:px-2 scrollbar-thin"
       >
         {visibleMessages.length === 0 && (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No messages yet
+          <div className="flex h-full min-h-[260px] items-center justify-center">
+            <div className="text-center">
+              <p className="text-base text-muted-foreground">No messages yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">Start the conversation by sending a message</p>
+            </div>
           </div>
         )}
 
-        <div className="space-y-3">
+        <div className="space-y-8">
           {visibleMessages.map((msg, index) => {
             if (msg.type === "file_cancel") {
               return (
-                <div key={index} className="text-center text-xs text-muted-foreground">
-                  File cancelled
+                <div key={index} className="flex justify-center py-2">
+                  <p className="text-xs text-muted-foreground">
+                    {msg.senderName || "Peer"} cancelled file share{msg.filename ? `: ${msg.filename}` : ""}
+                  </p>
                 </div>
               );
             }
 
+            if (msg.isCode) return null;
+
             const isYou = msg.sender === "you";
+            const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
+            const recipientLabels = msg.target_peer_ids?.length
+              ? msg.target_peer_ids.map((peerId) => {
+                  const peer = peers.find((item) => item.identifier === peerId);
+                  return `@${peer?.label || peer?.identifier || peerId}`;
+                })
+              : [];
 
             return (
-              <div
-                key={index}
-                className={`flex ${isYou ? "justify-end" : "justify-start"}`}
-              >
-                <div className="max-w-[75%]">
+              <div key={index} className={`flex w-full ${isYou ? "justify-end" : "justify-start"}`}>
+                <div className={`flex w-full max-w-[82%] flex-col ${isYou ? "items-end" : "items-start"}`}>
+                  <p className={`mb-2 text-sm font-medium text-[#b0b4be] ${isYou ? "pr-2 text-right" : "pl-2"}`}>
+                    {senderLabel}
+                  </p>
+
+                  {isYou && recipientLabels.length > 0 && (
+                    <p className="mb-2 pr-2 text-xs text-muted-foreground">
+                      To {recipientLabels.join(" ")}
+                    </p>
+                  )}
+
                   <div
-                    className={`rounded-2xl px-4 py-2.5 ${
+                    className={`rounded-[24px] px-5 py-4 shadow-[0_1px_0_rgba(255,255,255,0.45)] ${
                       isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
                     }`}
                   >
-                    <p className="text-[14px] leading-5 whitespace-pre-wrap">
+                    <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#3c3c3c]">
                       {msg.content}
                     </p>
-                    <p className="mt-1 text-[11px] text-gray-400">
+                    <p className="mt-2 text-sm text-[#a9adb8]">
                       {formatMessageTime(msg.timestamp)}
                     </p>
                   </div>
@@ -240,79 +296,94 @@ const MessagingPanel = ({
               </div>
             );
           })}
-
-          {/* 👇 scroll anchor */}
-          <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* ✅ INPUT */}
-      <div className="border-t px-2 py-2">
+      <div className="border-t border-black/5 px-1 py-3 md:px-2">
         <div className="relative">
-          {/* Mentions */}
           {mentionContext && mentionSuggestions.length > 0 && (
-            <div className="absolute bottom-full mb-2 w-full rounded-xl bg-white shadow">
-              {mentionSuggestions.map((peer, i) => (
-                <button
-                  key={peer.identifier}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectPeerSuggestion(peer);
-                  }}
-                  className={`block w-full px-3 py-2 text-left text-sm ${
-                    i === suggestionIndex ? "bg-gray-100" : ""
-                  }`}
-                >
-                  {peer.label || peer.identifier}
-                </button>
-              ))}
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
+              <div className="border-b border-black/5 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                Send to
+              </div>
+              <div className="max-h-56 overflow-y-auto p-1">
+                {mentionSuggestions.map((peer, index) => {
+                  const label = peer.label || peer.identifier;
+                  const isActive = index === suggestionIndex;
+
+                  return (
+                    <button
+                      key={peer.identifier}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        selectPeerSuggestion(peer);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                        isActive ? "bg-black/5" : "hover:bg-black/5"
+                      }`}
+                    >
+                      <span className="font-medium text-foreground">{label}</span>
+                      {peer.label && peer.label !== peer.identifier && (
+                        <span className="text-xs text-muted-foreground">@{peer.identifier}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {/* Emoji */}
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full right-0 mb-2"
+              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]"
             >
               <Picker
                 data={data}
-                onEmojiSelect={(e: EmojiSelect) =>
-                  insertAtCaret(e.native)
-                }
+                onEmojiSelect={(emoji: EmojiSelect) => insertAtCaret(emoji.native)}
+                theme="light"
+                previewPosition="none"
+                skinTonePosition="none"
+                searchPosition="top"
+                autoFocus
               />
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 rounded-[28px] border border-black/5 bg-white px-3 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+            <Button
+              ref={emojiButtonRef}
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setEmojiPickerOpen((current) => !current)}
+              className="h-10 w-10 rounded-full text-muted-foreground hover:bg-black/5 hover:text-foreground"
+            >
+              <Smile className="h-5 w-5" />
+            </Button>
+
             <Input
               ref={inputRef}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                setCaretPosition(e.target.selectionStart ?? 0);
+                setCaretPosition(e.currentTarget.selectionStart ?? e.target.value.length);
               }}
+              onClick={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
+              onSelect={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
+              onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
-              placeholder="Type message..."
-              className="flex-1 rounded-full"
+              placeholder="Type a message..."
+              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8] focus-visible:ring-0"
             />
 
             <Button
-              ref={emojiButtonRef}
-              size="icon"
-              variant="outline"
-              onClick={() => setEmojiPickerOpen((v) => !v)}
-              className="rounded-full"
-            >
-              <Smile className="h-4 w-4" />
-            </Button>
-
-            <Button
-              size="icon"
+              type="button"
               onClick={send}
-              className="rounded-full"
+              className="h-11 w-11 rounded-full bg-[#ff7a21] p-0 text-white shadow-[0_10px_18px_rgba(255,122,33,0.35)] hover:bg-[#ff8a3b]"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4 -rotate-12" />
             </Button>
           </div>
         </div>
