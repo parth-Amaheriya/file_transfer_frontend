@@ -31,10 +31,8 @@ const MessagingPanel = ({
   const [caretPosition, setCaretPosition] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
-  const [isAtBottom, setIsAtBottom] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
@@ -43,24 +41,12 @@ const MessagingPanel = ({
     (m) => m.type === "text" || m.type === "file_cancel"
   );
 
-  // ✅ Detect scroll position
-  const handleScroll = () => {
+  // ✅ Auto scroll to bottom on new messages
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-
-    const threshold = 80;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-
-    setIsAtBottom(atBottom);
-  };
-
-  // ✅ Smart auto-scroll
-  useEffect(() => {
-    if (isAtBottom) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [visibleMessages, isAtBottom]);
+    el.scrollTop = el.scrollHeight;
+  }, [visibleMessages]);
 
   // ✅ Close emoji picker on outside click
   useEffect(() => {
@@ -189,13 +175,18 @@ const MessagingPanel = ({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* ✅ MESSAGES */}
+    <div className="flex h-full min-h-0 w-full flex-col">
+      {/* ✅ SCROLLABLE MESSAGE PANEL */}
       <div
         ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto px-2 py-3"
+        className="flex-1 min-h-0 overflow-y-auto px-2 py-3 scrollbar-thin scrollbar-thumb-gray-300"
       >
+        {visibleMessages.length === 0 && (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            No messages yet
+          </div>
+        )}
+
         <div className="space-y-3">
           {visibleMessages.map((msg, index) => {
             if (msg.type === "file_cancel") {
@@ -230,14 +221,13 @@ const MessagingPanel = ({
               </div>
             );
           })}
-
-          <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* ✅ INPUT (FIXED AT BOTTOM) */}
-      <div className="sticky bottom-0 z-10 border-t bg-white px-2 py-2">
+      {/* ✅ INPUT (naturally stays at bottom) */}
+      <div className="flex-shrink-0 border-t border-black/5 px-2 py-2">
         <div className="relative">
+          {/* Emoji Picker */}
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
