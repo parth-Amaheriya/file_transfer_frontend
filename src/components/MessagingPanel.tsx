@@ -80,7 +80,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     }, 0);
-    
+
     return () => clearTimeout(scrollTimer);
   }, [messages]);
 
@@ -269,33 +269,45 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
             const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
             const recipientLabels = msg.target_peer_ids?.length
               ? msg.target_peer_ids.map((peerId) => {
-                  const peer = peers.find((item) => item.identifier === peerId);
-                  return `@${peer?.label || peer?.identifier || peerId}`;
-                })
+                const peer = peers.find((item) => item.identifier === peerId);
+                return `@${peer?.label || peer?.identifier || peerId}`;
+              })
               : [];
 
             return (
-              <div key={index} className={`flex w-full ${isYou ? "justify-end" : "justify-start"}`}>
-                <div className={`flex w-full max-w-[82%] flex-col ${isYou ? "items-end" : "items-start"}`}>
-                  <p className={`mb-2 text-sm font-medium text-[#b0b4be] ${isYou ? "pr-2 text-right" : "pl-2"}`}>
+              <div
+                key={index}
+                className={`flex w-full ${isYou ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`flex w-full max-w-[75%] flex-col ${isYou ? "items-end" : "items-start"
+                    }`}
+                >
+                  {/* Sender */}
+                  <p
+                    className={`mb-1 text-[11px] font-medium text-[#9aa0aa] ${isYou ? "pr-1 text-right" : "pl-1"
+                      }`}
+                  >
                     {senderLabel}
                   </p>
 
+                  {/* Recipient */}
                   {isYou && recipientLabels.length > 0 && (
-                    <p className="mb-2 pr-2 text-xs text-muted-foreground">
+                    <p className="mb-1 pr-1 text-[10px] text-muted-foreground">
                       To {recipientLabels.join(" ")}
                     </p>
                   )}
 
+                  {/* Message bubble */}
                   <div
-                    className={`rounded-[24px] px-5 py-4 shadow-[0_1px_0_rgba(255,255,255,0.45)] ${
-                      isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
-                    }`}
+                    className={`rounded-2xl px-4 py-2.5 shadow-sm ${isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
+                      }`}
                   >
-                    <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#3c3c3c]">
+                    <p className="whitespace-pre-wrap text-[14px] leading-5 text-[#3c3c3c]">
                       {msg.content}
                     </p>
-                    <p className="mt-2 text-sm text-[#a9adb8]">
+
+                    <p className="mt-1 text-[10px] text-[#a9adb8]">
                       {formatMessageTime(msg.timestamp)}
                     </p>
                   </div>
@@ -326,9 +338,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
                         event.preventDefault();
                         selectPeerSuggestion(peer);
                       }}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
-                        isActive ? "bg-black/5" : "hover:bg-black/5"
-                      }`}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${isActive ? "bg-black/5" : "hover:bg-black/5"
+                        }`}
                     >
                       <span className="font-medium text-foreground">{label}</span>
                       {peer.label && peer.label !== peer.identifier && (
@@ -382,7 +393,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
               placeholder="Type a message..."
-              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8] focus-visible:ring-0"
+              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8]"
             />
 
             <Button
