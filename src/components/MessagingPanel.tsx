@@ -201,6 +201,7 @@ const MessagingPanel = ({
             }
 
             const isYou = msg.sender === "you";
+            const senderLabel = isYou ? "You" : msg.senderName || "Peer";
 
             return (
               <div
@@ -208,6 +209,9 @@ const MessagingPanel = ({
                 className={`flex ${isYou ? "justify-end" : "justify-start"}`}
               >
                 <div className="max-w-[75%]">
+                  <p className={`mb-1 text-[11px] font-medium text-[#9a9a9a] ${isYou ? "text-right" : "text-left"}`}>
+                    {senderLabel}
+                  </p>
                   <div
                     className={`rounded-2xl px-4 py-2.5 ${
                       isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
