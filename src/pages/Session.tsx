@@ -1,4 +1,4 @@
-import { ArrowLeft, FileText, MessageSquare, Code } from "lucide-react";
+import { ArrowLeft, FileText,MessageCircle,Code2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState, useRef } from "react";
@@ -66,7 +66,8 @@ const readFileChunk = async (file: File, chunkIndex: number, chunkSize: number) 
 const Session = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const joinCode = location.state?.joinCode;
+  const queryJoinCode = new URLSearchParams(location.search).get("joinCode") || new URLSearchParams(location.search).get("code");
+  const joinCode = (location.state?.joinCode || queryJoinCode || "").trim().toUpperCase() || undefined;
   const initialDeviceName = location.state?.deviceName || sessionStorage.getItem("deviceName") || "My Device";
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
@@ -967,14 +968,14 @@ const Session = () => {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
-                  <MessageSquare className="h-3.5 w-3.5" />
+                  <MessageCircle className="h-3.5 w-3.5" />
                   Messages
                   {unreadTabs.has("messages") && (
                     <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
-                  <Code className="h-3.5 w-3.5" />
+                  <Code2 className="h-3.5 w-3.5" />
                   Code
                   {unreadTabs.has("code") && (
                     <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
