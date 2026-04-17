@@ -233,7 +233,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto px-1 pb-8 pt-4 md:px-2 scrollbar-thin"
+        className="flex-1 min-h-0 overflow-y-auto px-1 pb-4 pt-4 md:px-2 scrollbar-thin"
       >
         {visibleMessages.length === 0 && (
           <div className="flex h-full min-h-[260px] items-center justify-center">
@@ -299,7 +299,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         </div>
       </div>
 
-      <div className="border-t border-black/5 px-1 pb-2 pt-4 md:px-2">
+      <div className="border-t border-black/5 px-1 py-3 md:px-2">
         <div className="relative">
           {mentionContext && mentionSuggestions.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">

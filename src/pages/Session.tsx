@@ -944,8 +944,8 @@ const Session = () => {
             peerCount={livePeers.length}
           />
 
-          <div className="flex min-h-0 flex-col">
-            <Tabs className="flex min-h-0 flex-1 flex-col" value={activeTab} onValueChange={(value) => {
+          <div className="surface-elevated rounded-xl p-6">
+            <Tabs value={activeTab} onValueChange={(value) => {
               setActiveTab(value);
               setUnreadTabs(prev => {
                 const updated = new Set(prev);
@@ -983,7 +983,7 @@ const Session = () => {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="files" className="flex flex-1 min-h-0 flex-col">
+              <TabsContent value="files">
                 <FileTransferPanel
                   peers={selectablePeers}
                   selectedPeerIds={selectedPeerIds}
@@ -997,11 +997,11 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="messages" className="flex flex-1 min-h-0 flex-col">
+              <TabsContent value="messages">
                 <MessagingPanel messages={messages} peers={livePeers} onSendMessage={sendMessage} />
               </TabsContent>
 
-              <TabsContent value="code" className="flex flex-1 min-h-0 flex-col">
+              <TabsContent value="code">
                 <CodeSnippetPanel onSendCode={sendCode} messages={messages} />
               </TabsContent>
             </Tabs>
