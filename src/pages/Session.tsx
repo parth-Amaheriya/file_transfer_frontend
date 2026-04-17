@@ -933,17 +933,17 @@ const Session = () => {
         <div className="container max-w-6xl px-4 py-4 flex-1 min-h-0 flex flex-col">
           <div className="grid lg:grid-cols-[300px_1fr] gap-6 flex-1 min-h-0">
             <ConnectionPanel
-            pairingCode={pairing.code}
-            status={
-              liveConnectionState === "connected" ? "connected" :
-              liveConnectionState === "failed" ? "failed" :
-              pairing.status === "pending" ? "waiting" : "connecting"
-            }
-            onDisconnect={handleDisconnect}
-            userName={deviceName.trim() || "My Device"}
-            peers={livePeers}
-            peerCount={livePeers.length}
-          />
+              pairingCode={pairing.code}
+              status={
+                liveConnectionState === "connected" ? "connected" :
+                liveConnectionState === "failed" ? "failed" :
+                pairing.status === "pending" ? "waiting" : "connecting"
+              }
+              onDisconnect={handleDisconnect}
+              userName={deviceName.trim() || "My Device"}
+              peers={livePeers}
+              peerCount={livePeers.length}
+            />
 
           <div className="surface-elevated rounded-xl p-6 flex flex-col min-h-0 flex-1">
             <Tabs value={activeTab} onValueChange={(value) => {
