@@ -375,13 +375,13 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
               placeholder="Type a message..."
-              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8] focus-visible:ring-0"
+              className="h-10 flex-1 border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-[#a9adb8] "
             />
 
             <Button
               type="button"
               onClick={send}
-              className="h-11 w-11 rounded-full bg-[#ff7a21] p-0 text-white shadow-[0_10px_18px_rgba(255,122,33,0.35)] hover:bg-[#ff8a3b]"
+              className="h-11 w-11 rounded-full bg-[#ff7a21] p-0 text-white ] hover:bg-[#ff8a3b]"
             >
               <Send className="h-4 w-4 -rotate-12" />
             </Button>
