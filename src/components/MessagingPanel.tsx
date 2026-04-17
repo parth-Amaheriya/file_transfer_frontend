@@ -237,7 +237,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full w-full flex-col">
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto px-1 pb-4 pt-4 md:px-2 scrollbar-thin"
@@ -266,7 +266,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
             if (msg.isCode) return null;
 
             const isYou = msg.sender === "you";
-            const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
+            const senderLabel = isYou ? "You" : (msg.senderName || "Peer");
             const recipientLabels = msg.target_peer_ids?.length
               ? msg.target_peer_ids.map((peerId) => {
                 const peer = peers.find((item) => item.identifier === peerId);
@@ -318,7 +318,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
         </div>
       </div>
 
-      <div className="border-t border-black/5 px-1 py-3 md:px-2">
+      <div className="flex-shrink-0 border-t border-black/5 px-1 py-3 md:px-2">
         <div className="relative">
           {mentionContext && mentionSuggestions.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
@@ -355,7 +355,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]"
+              className="absolute bottom-full left-0 z-20 mb-3 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]"
             >
               <Picker
                 data={data}
