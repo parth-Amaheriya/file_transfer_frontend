@@ -657,15 +657,6 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
   return (
     <div className="flex h-screen flex-col bg-background border border-border rounded-lg shadow-xs overflow-hidden">
-      
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <h2 className="text-lg font-semibold text-foreground">Team Conversation</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {peers.length} participant{peers.length !== 1 ? "s" : ""} • {visibleMessages.length} message{visibleMessages.length !== 1 ? "s" : ""}
-        </p>
-      </div>
-
       {/* Messages Container */}
       <div 
         ref={scrollRef} 
@@ -705,56 +696,51 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           const senderInitials = getInitials(senderLabel);
 
           return (
-            <div
-              key={index}
-              className={`flex gap-4 ${isYou ? "justify-end" : "justify-start"}`}
-            >
-              {!isYou && (
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted border border-border text-xs font-semibold text-muted-foreground">
-                  {senderInitials || "P"}
-                </div>
-              )}
+              <div
+                key={index}
+                className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
+                {!isYou && (
+                  <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-black/5 bg-[#f3f0ea] text-xs font-semibold text-[#9a9a9a]">
+                    {senderInitials || "P"}
+                  </div>
+                )}
 
-              <div className={`flex flex-col gap-1.5 max-w-md ${isYou ? "items-end" : "items-start"}`}>
-                <div className="flex items-center gap-3">
-                  <p className="text-sm font-medium text-foreground">
+                <div className="max-w-[75%]">
+                  <p className={`mb-1 text-[11px] font-medium text-[#9a9a9a] ${isYou ? "text-right" : "text-left"}`}>
                     {senderLabel}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatMessageTime(msg.timestamp)}
-                  </p>
-                </div>
 
-                {isYou && recipientLabels.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    To {recipientLabels.join(" ")}
-                  </p>
-                )}
+                  {isYou && recipientLabels.length > 0 && (
+                    <p className="mb-1 text-[11px] text-gray-400">
+                      To {recipientLabels.join(" ")}
+                    </p>
+                  )}
 
-                {isYou ? (
-                  <div className="bg-muted border border-border rounded-lg px-4 py-3">
-                    <p className="text-sm text-foreground leading-relaxed">
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 ${
+                      isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-[14px] leading-5">
                       {msg.content}
                     </p>
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      {formatMessageTime(msg.timestamp)}
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-sm text-foreground leading-relaxed max-w-prose">
-                    {msg.content}
-                  </p>
-                )}
+                </div>
               </div>
-            </div>
-          );
+            );
         })}
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-border bg-background px-8 py-6">
+      <div className="flex-shrink-0 border-t border-black/5 px-2 py-2">
         <div className="relative">
           {/* Mention Suggestions */}
           {mentionContext && mentionSuggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-lg border border-border bg-background shadow-lg">
-              <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border">
+            <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-lg border border-black/5 bg-white shadow-lg">
+              <div className="border-b border-black/5 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Send to
               </div>
               <div className="max-h-56 overflow-y-auto">
@@ -771,9 +757,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
                         selectPeerSuggestion(peer);
                       }}
                       className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors ${
-                        isActive 
-                          ? "bg-muted" 
-                          : "hover:bg-muted/50"
+                        isActive ? "bg-[#f3f0ea]" : "hover:bg-[#f8f5ef]"
                       }`}
                     >
                       <span className="font-medium text-foreground">{label}</span>
@@ -791,7 +775,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           {emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
-              className="absolute bottom-full right-0 z-20 mb-3 overflow-hidden rounded-lg border border-border bg-background shadow-lg"
+              className="absolute bottom-full left-0 z-[100] mb-2 overflow-hidden rounded-lg"
             >
               <Picker
                 data={data}
@@ -806,7 +790,18 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           )}
 
           {/* Input Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 rounded-full border border-black/5 bg-white px-3 py-2 shadow-sm">
+            <Button
+              ref={emojiButtonRef}
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setEmojiPickerOpen((current) => !current)}
+              className="rounded-full"
+            >
+              <Smile className="h-5 w-5" />
+            </Button>
+
             <Input
               ref={inputRef}
               value={input}
@@ -818,28 +813,16 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onSelect={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyUp={(e) => setCaretPosition(e.currentTarget.selectionStart ?? input.length)}
               onKeyDown={handleKeyPress}
-              placeholder="Write a message..."
-              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/20"
+              placeholder="Type a message..."
+              className="flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
-
-            <Button
-              ref={emojiButtonRef}
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEmojiPickerOpen((current) => !current)}
-              className="rounded-lg h-10 w-10 p-0"
-            >
-              <Smile className="h-4 w-4" />
-            </Button>
 
             <Button
               type="button"
               onClick={send}
-              size="sm"
-              className="rounded-lg h-10 px-4"
+              className="h-10 w-10 rounded-full bg-primary p-0 hover:bg-primary/90"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-4 w-4 -rotate-12 text-white" />
             </Button>
           </div>
         </div>
