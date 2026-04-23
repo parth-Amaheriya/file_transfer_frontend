@@ -428,13 +428,16 @@ interface MessagingPanelProps {
   messages: Message[];
   peers: DeviceDescriptor[];
   onSendMessage: (content: string, targetPeerIds?: string[]) => void;
+  disabled?: boolean;
+  emojiEnabled?: boolean;
+  mentionsEnabled?: boolean;
 }
 
 type EmojiSelect = {
   native: string;
 };
 
-const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps) => {
+const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emojiEnabled = true, mentionsEnabled = true }: MessagingPanelProps) => {
   const [input, setInput] = useState("");
   const [caretPosition, setCaretPosition] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -444,6 +447,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel");
+  const allowEmoji = emojiEnabled && !disabled;
+  const allowMentions = mentionsEnabled && !disabled;
 
   const formatMessageTime = (timestamp?: string | number) => {
     if (!timestamp) {
@@ -467,6 +472,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   const mentionContext = useMemo(() => {
+    if (!allowMentions) {
+      return null;
+    }
+
     const beforeCaret = input.slice(0, caretPosition);
     const match = beforeCaret.match(/^\s*((?:@[^\s@]+\s*)*)@([^\s@]*)$/);
 
@@ -481,10 +490,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       query: match[2].toLowerCase(),
       mentionStart: tokenStart + match[1].length,
     };
-  }, [caretPosition, input]);
+  }, [allowMentions, caretPosition, input]);
 
   const mentionSuggestions = useMemo(() => {
-    if (!mentionContext) {
+    if (!allowMentions || !mentionContext) {
       return [] as DeviceDescriptor[];
     }
 
@@ -497,7 +506,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       })
       .sort((left, right) => (left.label || left.identifier).localeCompare(right.label || right.identifier))
       .slice(0, 6);
-  }, [mentionContext, peers]);
+  }, [allowMentions, mentionContext, peers]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -580,6 +589,13 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   const parseOutgoingMessage = (content: string) => {
+    if (!allowMentions) {
+      return {
+        targetPeerIds: [] as string[],
+        normalizedContent: content.trim(),
+      };
+    }
+
     let remainder = content.trimStart();
     const targetPeerIds: string[] = [];
 
@@ -613,7 +629,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
   };
 
   const send = () => {
-    if (!input.trim()) return;
+    if (disabled || !input.trim()) return;
 
     const { targetPeerIds, normalizedContent } = parseOutgoingMessage(input);
     if (targetPeerIds.length > 0 && !normalizedContent.trim()) {
@@ -738,7 +754,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
       <div className="flex-shrink-0 border-t border-black/5 px-2 py-2">
         <div className="relative">
           {/* Mention Suggestions */}
-          {mentionContext && mentionSuggestions.length > 0 && (
+          {allowMentions && mentionContext && mentionSuggestions.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-lg border border-black/5 bg-white shadow-lg">
               <div className="border-b border-black/5 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Send to
@@ -772,7 +788,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           )}
 
           {/* Emoji Picker */}
-          {emojiPickerOpen && (
+          {allowEmoji && emojiPickerOpen && (
             <div
               ref={emojiPickerRef}
               className="absolute bottom-full left-0 z-[100] mb-2 overflow-hidden rounded-lg"
@@ -791,16 +807,18 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
 
           {/* Input Controls */}
           <div className="flex items-center gap-3 rounded-full border border-black/5 bg-white px-3 py-2 shadow-sm">
-            <Button
-              ref={emojiButtonRef}
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setEmojiPickerOpen((current) => !current)}
-              className="rounded-full"
-            >
-              <Smile className="h-5 w-5" />
-            </Button>
+            {allowEmoji && (
+              <Button
+                ref={emojiButtonRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setEmojiPickerOpen((current) => !current)}
+                className="rounded-full"
+              >
+                <Smile className="h-5 w-5" />
+              </Button>
+            )}
 
             <Input
               ref={inputRef}
@@ -815,16 +833,23 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
               onKeyDown={handleKeyPress}
               placeholder="Type a message..."
               className="flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              disabled={disabled}
             />
 
             <Button
               type="button"
               onClick={send}
               className="h-10 w-10 rounded-full bg-primary p-0 hover:bg-primary/90"
+              disabled={disabled}
             >
               <Send className="h-4 w-4 -rotate-12 text-white" />
             </Button>
           </div>
+          {disabled && (
+            <p className="mt-2 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Messaging is disabled by an administrator.
+            </p>
+          )}
         </div>
       </div>
     </div>

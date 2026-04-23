@@ -1,7 +1,8 @@
 import { ArrowLeft, FileText, MessageSquare, Code } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BackgroundEffects from "@/components/BackgroundEffects";
@@ -11,7 +12,7 @@ import FileTransferPanel from "@/components/FileTransferPanel";
 import MessagingPanel from "@/components/MessagingPanel";
 import CodeSnippetPanel from "@/components/CodeSnippetPanel";
 import { type FileItem } from "@/components/FileTransferPanel";
-import { api, type DeviceDescriptor, type PairingCodeOut, type Message } from "@/lib/api";
+import { api, type DeviceDescriptor, type PairingCodeOut, type Message, type RuntimeConfig } from "@/lib/api";
 import { WebRTCManager, type FileTransferProgress, type SwarmChunkReceipt, type SwarmManifest } from "@/lib/webrtc";
 
 type SwarmTransferState = {
@@ -70,6 +71,12 @@ const Session = () => {
   const location = useLocation();
   const joinCode = location.state?.joinCode;
   const initialDeviceName = normalizeDeviceName(location.state?.deviceName || sessionStorage.getItem("deviceName") || "MyDevice");
+  const { data: runtimeConfig } = useQuery<RuntimeConfig>({
+    queryKey: ["runtime-config"],
+    queryFn: api.getRuntimeConfig,
+    refetchInterval: 30000,
+    staleTime: 15000,
+  });
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
     // Try to restore pairing from sessionStorage on refresh
@@ -98,6 +105,9 @@ const Session = () => {
   const loaderStartRef = useRef<number | null>(pairing ? null : Date.now());
   const loaderHideTimerRef = useRef<number | null>(null);
   const [showLoader, setShowLoader] = useState(() => !pairing);
+  const maintenanceMode = runtimeConfig?.maintenance_mode || "off";
+  const featureFlags = runtimeConfig?.feature_flags;
+  const policy = runtimeConfig?.policy;
 
   const getConnectedPeerManagers = (peerIds?: string[]): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())
@@ -368,15 +378,19 @@ const Session = () => {
   }, [pairing?.initiator, pairing?.peers, peerConnectionStates, deviceId]);
 
   useEffect(() => {
-    // Only initiate/join if we don't have a restored pairing
-    if (!pairing) {
+    if (!runtimeConfig) {
+      return;
+    }
+
+    // Only initiate/join if we don't have a restored pairing and maintenance allows new sessions
+    if (!pairing && runtimeConfig.maintenance_mode === "off") {
       if (joinCode) {
         joinMutation.mutate(joinCode);
       } else {
         initiateMutation.mutate();
       }
     }
-  }, [joinCode, pairing]);
+  }, [joinCode, pairing, runtimeConfig?.maintenance_mode]);
 
   // Subscribe to real-time pairing updates via SSE
   useEffect(() => {
@@ -752,6 +766,11 @@ const Session = () => {
   }, [messages, activeTab]);
 
   const sendMessage = (content: string, targetPeerIds: string[] = []) => {
+    if (featureFlags && !featureFlags.messaging) {
+      toast.error("Messaging is disabled by an administrator.");
+      return;
+    }
+
     const recipientIds = targetPeerIds.length > 0 ? targetPeerIds : getConnectedPeerIds();
     const managers = getConnectedPeerManagers(targetPeerIds.length > 0 ? targetPeerIds : undefined);
     if (managers.length === 0) return;
@@ -770,6 +789,11 @@ const Session = () => {
   };
 
   const sendCode = (code: string, title: string) => {
+    if (featureFlags && !featureFlags.code_sharing) {
+      toast.error("Code sharing is disabled by an administrator.");
+      return;
+    }
+
     const managers = getConnectedPeerManagers();
     if (managers.length === 0) return;
 
@@ -781,6 +805,16 @@ const Session = () => {
   };
 
   const uploadFile = async (file: File, targetPeerIds: string[]) => {
+    if (featureFlags && !featureFlags.file_transfer) {
+      toast.error("File transfer is disabled by an administrator.");
+      return;
+    }
+
+    if (policy && file.size > policy.max_file_size_bytes) {
+      toast.error(`File exceeds the ${Math.round(policy.max_file_size_bytes / 1024 / 1024)} MB limit.`);
+      return;
+    }
+
     const selectedTargets = targetPeerIds.length > 0 ? targetPeerIds : selectedPeerIds;
     const connectedTargets = getConnectedPeerIds(selectedTargets);
     const managers = getConnectedPeerManagers(connectedTargets);
@@ -888,12 +922,37 @@ const Session = () => {
     navigate("/");
   };
 
-  if (!pairing || showLoader) {
+  const shouldShowLoader = (!pairing && (!runtimeConfig || (showLoader && maintenanceMode === "off")));
+
+  if (shouldShowLoader) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#ececec]">
           <Loader />
         </div>
       );
+  }
+
+  if (!pairing && maintenanceMode !== "off") {
+    return (
+      <div className="min-h-screen flex items-center justify-center relative px-4 bg-gradient-to-br from-[#18120f] via-[#231915] to-[#0f1312] text-white">
+        <BackgroundEffects />
+        <div className="absolute inset-0 bg-black/35" />
+        <div className="relative z-10 max-w-lg rounded-3xl border border-white/10 bg-white/8 p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-xs uppercase tracking-[0.35em] text-white/60">Maintenance mode</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight">New pairings are paused</h1>
+          <p className="mt-3 text-sm leading-6 text-white/75">
+            An administrator has {maintenanceMode === "shutdown" ? "fully stopped active sessions and disabled new connections" : "blocked new pairings and joins for now"}.
+          </p>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4 text-xs text-white/70">
+            <p className="font-medium text-white/80">What this means</p>
+            <p className="mt-1">Existing sessions continue only if the app is in block-new mode. Refresh or try again later.</p>
+          </div>
+          <Button variant="outline" className="mt-6 w-full bg-white text-black hover:bg-white/90" onClick={() => navigate("/")}>
+            Return home
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const allParticipants = [pairing.initiator, ...(pairing.peers || [])].filter(
@@ -926,7 +985,14 @@ const Session = () => {
             </Button>
             <span className="text-sm font-bold tracking-tight text-foreground">Nexdrop</span>
           </div>
-          <span className="text-xs text-muted-foreground font-medium">Session Active</span>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            {maintenanceMode !== "off" && (
+              <span className="rounded-full border border-border bg-muted px-2.5 py-1 uppercase tracking-[0.2em] text-[10px] text-foreground">
+                {maintenanceMode === "shutdown" ? "Shutdown" : "Join blocked"}
+              </span>
+            )}
+            <span>Session Active</span>
+          </div>
         </div>
       </header>
 
@@ -946,6 +1012,13 @@ const Session = () => {
           />
 
           <div className="surface-elevated rounded-xl p-6">
+            {maintenanceMode !== "off" && (
+              <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-900">
+                {maintenanceMode === "shutdown"
+                  ? "Maintenance shutdown is active. Active sessions will be disconnected."
+                  : "Maintenance is active. New pairings and joins are blocked."}
+              </div>
+            )}
             <Tabs value={activeTab} onValueChange={(value) => {
               setActiveTab(value);
               setUnreadTabs(prev => {
@@ -995,15 +1068,24 @@ const Session = () => {
                   onFileUpload={uploadFile}
                   onCancelTransfer={cancelFileTransfer}
                   files={files}
+                  disabled={featureFlags ? !featureFlags.file_transfer : false}
+                  maxFileSizeBytes={policy?.max_file_size_bytes}
                 />
               </TabsContent>
 
               <TabsContent value="messages">
-                <MessagingPanel messages={messages} peers={livePeers} onSendMessage={sendMessage} />
+                <MessagingPanel
+                  messages={messages}
+                  peers={livePeers}
+                  onSendMessage={sendMessage}
+                  disabled={featureFlags ? !featureFlags.messaging : false}
+                  emojiEnabled={featureFlags ? featureFlags.emoji_support : true}
+                  mentionsEnabled={featureFlags ? featureFlags.mentions : true}
+                />
               </TabsContent>
 
               <TabsContent value="code">
-                <CodeSnippetPanel onSendCode={sendCode} messages={messages} />
+                <CodeSnippetPanel onSendCode={sendCode} messages={messages} disabled={featureFlags ? !featureFlags.code_sharing : false} />
               </TabsContent>
             </Tabs>
           </div>

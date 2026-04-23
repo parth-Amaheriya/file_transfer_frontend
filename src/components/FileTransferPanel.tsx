@@ -29,9 +29,11 @@ interface FileTransferPanelProps {
   onFileUpload: (file: File, targetPeerIds: string[]) => void;
   onCancelTransfer?: (fileId: string) => void;
   files: FileItem[];
+  disabled?: boolean;
+  maxFileSizeBytes?: number;
 }
 
-const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUpload, onCancelTransfer, files }: FileTransferPanelProps) => {
+const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUpload, onCancelTransfer, files, disabled = false, maxFileSizeBytes }: FileTransferPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isRecipientOpen, setIsRecipientOpen] = useState(false);
@@ -123,6 +125,10 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
   };
 
   const handleFileSelect = (selectedFiles: FileList | null) => {
+    if (disabled) {
+      return;
+    }
+
     if (selectedFiles && selectedPeerIds.length > 0) {
       Array.from(selectedFiles).forEach(file => onFileUpload(file, selectedPeerIds));
     }
@@ -130,11 +136,18 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (disabled) {
+      return;
+    }
     setIsDragging(false);
     handleFileSelect(e.dataTransfer.files);
   };
 
   const handleClick = () => {
+    if (disabled) {
+      return;
+    }
+
     fileInputRef.current?.click();
   };
 
@@ -156,7 +169,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
               size="sm"
               onClick={selectAllPeers}
               className="h-7 px-2.5 text-[11px] rounded-full"
-              disabled={peers.length === 0}
+              disabled={disabled || peers.length === 0}
             >
               Send to all
             </Button>
@@ -166,6 +179,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                 size="sm"
                 onClick={clearSelection}
                 className="h-7 px-2.5 text-[11px] rounded-full"
+                disabled={disabled}
               >
                 Clear
               </Button>
@@ -206,6 +220,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
               <input
                 ref={recipientInputRef}
                 value={searchQuery}
+                disabled={disabled}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                   setIsRecipientOpen(true);
@@ -283,23 +298,31 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
       </div>
 
       <div
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragOver={(e) => { e.preventDefault(); if (!disabled) { setIsDragging(true); } }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         onClick={handleClick}
         className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-150 cursor-pointer
-          ${isDragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"}`}
+          ${disabled ? "cursor-not-allowed opacity-60 border-border" : isDragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"}`}
       >
         <input
           ref={fileInputRef}
           type="file"
           multiple
+          disabled={disabled}
           onChange={(e) => handleFileSelect(e.target.files)}
           className="hidden"
         />
         <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
         <p className="text-sm font-medium text-foreground">Drop files here or click to upload</p>
-        <p className="text-xs text-muted-foreground mt-1">Any file type and size supported</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {maxFileSizeBytes ? `Max ${(maxFileSizeBytes / 1024 / 1024).toFixed(0)} MB per file.` : "Any file type and size supported"}
+        </p>
+        {disabled && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            File transfer is disabled by an administrator.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

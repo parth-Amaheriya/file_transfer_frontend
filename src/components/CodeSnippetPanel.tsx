@@ -18,6 +18,7 @@ interface CodeSnippet {
 interface CodeSnippetPanelProps {
   onSendCode: (code: string, title: string) => void;
   messages: Message[];
+  disabled?: boolean;
 }
 
 const detectLanguage = (code: string): string => {
@@ -44,7 +45,7 @@ const detectLanguage = (code: string): string => {
   return "Code";
 };
 
-const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
+const CodeSnippetPanel = ({ onSendCode, messages, disabled = false }: CodeSnippetPanelProps) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newCode, setNewCode] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -69,7 +70,7 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
   };
 
   const sendCode = () => {
-    if (newCode.trim()) {
+    if (!disabled && newCode.trim()) {
       onSendCode(newCode, newTitle.trim() || "Untitled Snippet");
       setNewCode("");
       setNewTitle("");
@@ -158,17 +159,24 @@ const CodeSnippetPanel = ({ onSendCode, messages }: CodeSnippetPanelProps) => {
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="Give your snippet a title (e.g., Authentication Helper)..."
           className="text-sm"
+          disabled={disabled}
         />
         <Textarea
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}
           placeholder="Paste your code snippet here..."
           className="min-h-[200px] font-mono text-sm"
+          disabled={disabled}
         />
-        <Button onClick={sendCode} className="w-full">
+        <Button onClick={sendCode} className="w-full" disabled={disabled}>
           <Send className="h-4 w-4 mr-2" />
           Send Code
         </Button>
+        {disabled && (
+          <p className="text-xs text-muted-foreground">
+            Code sharing is disabled by an administrator.
+          </p>
+        )}
       </div>
     </div>
   );

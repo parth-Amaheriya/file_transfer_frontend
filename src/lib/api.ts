@@ -6,17 +6,84 @@ export interface DeviceDescriptor {
   metadata?: { type?: string };
 }
 
+export interface FeatureFlags {
+  file_transfer: boolean;
+  messaging: boolean;
+  code_sharing: boolean;
+  emoji_support: boolean;
+  mentions: boolean;
+}
+
+export interface PolicySettings {
+  max_file_size_bytes: number;
+  pairing_ttl_seconds: number;
+  max_devices_per_session: number;
+  pairing_rate_limit_per_minute: number;
+  admin_rate_limit_per_minute: number;
+}
+
+export interface RuntimeConfig {
+  maintenance_mode: "off" | "block_new" | "shutdown";
+  feature_flags: FeatureFlags;
+  policy: PolicySettings;
+  updated_at: string;
+}
+
+export interface AdminUser {
+  username: string;
+  role: "viewer" | "operator" | "admin" | "owner";
+  display_name?: string | null;
+  last_login_at?: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  role: AdminUser["role"];
+  action: string;
+  target?: string | null;
+  status: "success" | "blocked" | "denied";
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface AdminDashboard {
+  current_user: AdminUser;
+  settings: RuntimeConfig;
+  sessions: PairingCodeOut[];
+  audit_log: AuditLogEntry[];
+}
+
+export interface AdminLoginResponse {
+  token: string;
+  token_type: "bearer";
+  user: AdminUser;
+  expires_at: string;
+  settings: RuntimeConfig;
+}
+
+export interface AdminSettingsUpdate {
+  maintenance_mode: RuntimeConfig["maintenance_mode"];
+  feature_flags: FeatureFlags;
+  policy: PolicySettings;
+}
+
 export interface PairingCodeOut {
   id: string;
   code: string;
-  status: string;
+  status: "pending" | "connected" | "expired" | "terminated";
   initiator: DeviceDescriptor;
   peer?: DeviceDescriptor;
   peers?: DeviceDescriptor[];
   peer_count?: number;
+  device_count?: number;
   created_at: string;
   connected_at?: string;
   expires_at: string;
+  terminated_at?: string;
+  termination_reason?: string;
 }
 
 export interface Message {
@@ -61,6 +128,12 @@ export interface SignalingMessage {
 }
 
 export const api = {
+  async getRuntimeConfig(): Promise<RuntimeConfig> {
+    const response = await fetch(`${API_BASE}/api/runtime-config`);
+    if (!response.ok) throw new Error("Failed to get runtime config");
+    return response.json();
+  },
+
   async initiatePairing(device: DeviceDescriptor): Promise<PairingCodeOut> {
     const response = await fetch(`${API_BASE}/api/pairing/initiate`, {
       method: "POST",
@@ -82,6 +155,91 @@ export const api = {
       body: JSON.stringify({ device }),
     });
     if (!response.ok) throw new Error("Failed to join pairing");
+    return response.json();
+  },
+
+  async adminLogin(username: string, password: string): Promise<AdminLoginResponse> {
+    const response = await fetch(`${API_BASE}/api/admin/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) throw new Error("Failed to sign in");
+    return response.json();
+  },
+
+  async adminLogout(token: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/admin/logout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to sign out");
+  },
+
+  async getAdminDashboard(token: string): Promise<AdminDashboard> {
+    const response = await fetch(`${API_BASE}/api/admin/dashboard`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to load admin dashboard");
+    return response.json();
+  },
+
+  async getAdminSessions(token: string): Promise<PairingCodeOut[]> {
+    const response = await fetch(`${API_BASE}/api/admin/sessions`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to load admin sessions");
+    return response.json();
+  },
+
+  async disconnectAdminSession(token: string, pairingId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/admin/sessions/${pairingId}/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to disconnect session");
+  },
+
+  async disconnectAdminDevice(token: string, pairingId: string, deviceId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/admin/sessions/${pairingId}/devices/${deviceId}/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to disconnect device");
+  },
+
+  async getAdminAuditLog(token: string): Promise<AuditLogEntry[]> {
+    const response = await fetch(`${API_BASE}/api/admin/audit-log`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to load audit log");
+    return response.json();
+  },
+
+  async updateAdminSettings(token: string, settings: AdminSettingsUpdate): Promise<RuntimeConfig> {
+    const response = await fetch(`${API_BASE}/api/admin/settings`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(settings),
+    });
+    if (!response.ok) throw new Error("Failed to update admin settings");
     return response.json();
   },
 
