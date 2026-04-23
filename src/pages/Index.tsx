@@ -40,11 +40,6 @@ const Index = () => {
                 placeholder="MyLaptop"
                 className={`font-medium ${deviceNameHasSpaces ? "border-destructive focus-visible:ring-destructive/30" : ""}`}
               />
-              <p className={`text-[11px] ${deviceNameHasSpaces ? "font-medium text-destructive" : "text-muted-foreground"}`}>
-                {deviceNameHasSpaces
-                  ? "Device name must not contain spaces."
-                  : "Use a single word with no spaces."}
-              </p>
             </div>
           </div>
 
