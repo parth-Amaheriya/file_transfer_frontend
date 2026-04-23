@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import BackgroundEffects from "@/components/BackgroundEffects";
 
+const normalizeDeviceName = (value: string) => value.replace(/\s+/g, "");
+
 const Index = () => {
   const [code, setCode] = useState("");
-  const [deviceName, setDeviceName] = useState(() => sessionStorage.getItem("deviceName") || "My Device");
+  const [deviceName, setDeviceName] = useState(() => normalizeDeviceName(sessionStorage.getItem("deviceName") || "") || "MyDevice");
   const navigate = useNavigate();
 
   return (
@@ -31,19 +33,27 @@ const Index = () => {
         <div className="surface-elevated rounded-xl p-6 space-y-5">
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Device name</p>
-            <Input
-              value={deviceName}
-              onChange={(e) => setDeviceName(e.target.value)}
-              placeholder="My laptop"
-              className="font-medium"
-            />
+            <div className="space-y-1">
+              <Input
+                value={deviceName}
+                onChange={(e) => setDeviceName(normalizeDeviceName(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === " ") {
+                    e.preventDefault();
+                  }
+                }}
+                placeholder="MyLaptop"
+                className="font-medium"
+              />
+              <p className="text-[11px] text-muted-foreground">Spaces are removed automatically from the device name.</p>
+            </div>
           </div>
 
           <Button
             variant="hero"
             size="lg"
             className="w-full text-base h-12"
-            onClick={() => navigate("/session", { state: { deviceName: deviceName.trim() || "My Device" } })}
+            onClick={() => navigate("/session", { state: { deviceName: normalizeDeviceName(deviceName) || "MyDevice" } })}
           >
             Create Session
             <ArrowRight className="h-4 w-4 ml-1" />
@@ -65,7 +75,7 @@ const Index = () => {
             />
             <Button
               variant="outline"
-              onClick={() => code.trim() && navigate("/session", { state: { joinCode: code.trim(), deviceName: deviceName.trim() || "My Device" } })}
+              onClick={() => code.trim() && navigate("/session", { state: { joinCode: code.trim(), deviceName: normalizeDeviceName(deviceName) || "MyDevice" } })}
               disabled={!code.trim()}
             >
               Join

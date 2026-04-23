@@ -63,11 +63,13 @@ const readFileChunk = async (file: File, chunkIndex: number, chunkSize: number) 
   return new Uint8Array(await file.slice(start, end).arrayBuffer());
 };
 
+const normalizeDeviceName = (value?: string | null) => value?.replace(/\s+/g, "") || "MyDevice";
+
 const Session = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const joinCode = location.state?.joinCode;
-  const initialDeviceName = location.state?.deviceName || sessionStorage.getItem("deviceName") || "My Device";
+  const initialDeviceName = normalizeDeviceName(location.state?.deviceName || sessionStorage.getItem("deviceName") || "MyDevice");
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
     // Try to restore pairing from sessionStorage on refresh
@@ -230,7 +232,7 @@ const Session = () => {
   const initiateMutation = useMutation({
     mutationFn: () => api.initiatePairing({ 
       identifier: deviceId, 
-      label: deviceName.trim() || "My Device", 
+      label: normalizeDeviceName(deviceName), 
       metadata: { type: "desktop" } 
     }),
     onSuccess: (data) => setPairing(data),
@@ -245,7 +247,7 @@ const Session = () => {
         console.log('Attempting to join pairing');
         const joinedPairing = await api.joinPairing(code, { 
           identifier: deviceId, 
-          label: deviceName.trim() || "My Device", 
+          label: normalizeDeviceName(deviceName), 
           metadata: { type: "desktop" } 
         });
         console.log('Successfully joined pairing:', joinedPairing.status, 'peer_count:', joinedPairing.peer_count);
@@ -269,7 +271,7 @@ const Session = () => {
       sessionStorage.removeItem("pairing");
     }
     sessionStorage.setItem("deviceId", deviceId);
-    sessionStorage.setItem("deviceName", deviceName);
+    sessionStorage.setItem("deviceName", normalizeDeviceName(deviceName));
   }, [pairing, deviceId, deviceName]);
 
   useEffect(() => {
@@ -938,7 +940,7 @@ const Session = () => {
               pairing.status === "pending" ? "waiting" : "connecting"
             }
             onDisconnect={handleDisconnect}
-            userName={deviceName.trim() || "My Device"}
+            userName={normalizeDeviceName(deviceName)}
             peers={livePeers}
             peerCount={livePeers.length}
           />
