@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import BackgroundEffects from "@/components/BackgroundEffects";
 
-const normalizeDeviceName = (value: string) => value.replace(/\s+/g, "");
-
 const Index = () => {
   const [code, setCode] = useState("");
-  const [deviceName, setDeviceName] = useState(() => normalizeDeviceName(sessionStorage.getItem("deviceName") || "") || "MyDevice");
+  const [deviceName, setDeviceName] = useState(() => sessionStorage.getItem("deviceName") || "MyDevice");
   const navigate = useNavigate();
+  const deviceNameHasSpaces = /\s/.test(deviceName);
 
   return (
     <div className="min-h-screen flex items-center justify-center relative px-4">
@@ -36,16 +35,16 @@ const Index = () => {
             <div className="space-y-1">
               <Input
                 value={deviceName}
-                onChange={(e) => setDeviceName(normalizeDeviceName(e.target.value))}
-                onKeyDown={(e) => {
-                  if (e.key === " ") {
-                    e.preventDefault();
-                  }
-                }}
+                onChange={(e) => setDeviceName(e.target.value)}
+                aria-invalid={deviceNameHasSpaces}
                 placeholder="MyLaptop"
-                className="font-medium"
+                className={`font-medium ${deviceNameHasSpaces ? "border-destructive focus-visible:ring-destructive/30" : ""}`}
               />
-              <p className="text-[11px] text-muted-foreground">Spaces are removed automatically from the device name.</p>
+              <p className={`text-[11px] ${deviceNameHasSpaces ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                {deviceNameHasSpaces
+                  ? "Device name must not contain spaces."
+                  : "Use a single word with no spaces."}
+              </p>
             </div>
           </div>
 
@@ -53,7 +52,14 @@ const Index = () => {
             variant="hero"
             size="lg"
             className="w-full text-base h-12"
-            onClick={() => navigate("/session", { state: { deviceName: normalizeDeviceName(deviceName) || "MyDevice" } })}
+            onClick={() => {
+              if (deviceNameHasSpaces) {
+                return;
+              }
+
+              navigate("/session", { state: { deviceName: deviceName.trim() || "MyDevice" } });
+            }}
+            disabled={deviceNameHasSpaces}
           >
             Create Session
             <ArrowRight className="h-4 w-4 ml-1" />
@@ -75,8 +81,14 @@ const Index = () => {
             />
             <Button
               variant="outline"
-              onClick={() => code.trim() && navigate("/session", { state: { joinCode: code.trim(), deviceName: normalizeDeviceName(deviceName) || "MyDevice" } })}
-              disabled={!code.trim()}
+              onClick={() => {
+                if (!code.trim() || deviceNameHasSpaces) {
+                  return;
+                }
+
+                navigate("/session", { state: { joinCode: code.trim(), deviceName: deviceName.trim() || "MyDevice" } });
+              }}
+              disabled={!code.trim() || deviceNameHasSpaces}
             >
               Join
             </Button>

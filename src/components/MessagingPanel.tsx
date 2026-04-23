@@ -686,7 +686,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage }: MessagingPanelProps)
           if (msg.isCode) return null;
 
           const isYou = msg.sender === "you";
-          const senderLabel = msg.senderName || (isYou ? "You" : "Peer");
+          const senderLabel = isYou ? "You" : msg.senderName || "Peer";
           const recipientLabels = msg.target_peer_ids?.length
             ? msg.target_peer_ids.map((peerId) => {
                 const peer = peers.find((item) => item.identifier === peerId);
