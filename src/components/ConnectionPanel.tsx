@@ -1,7 +1,8 @@
-import { Copy, Wifi, WifiOff, Loader2, Users } from "lucide-react";
+import { Copy, QrCode, Wifi, WifiOff, Loader2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import type { DeviceDescriptor } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api, type DeviceDescriptor, type PairingQrCodeOut } from "@/lib/api";
 
 interface ConnectionPanelProps {
   pairingCode: string;
@@ -21,6 +22,19 @@ const statusConfig = {
 
 const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, peerCount }: ConnectionPanelProps) => {
   const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+
+  const { data: pairingQr, isLoading: isQrLoading, isError: isQrError } = useQuery<PairingQrCodeOut>({
+    queryKey: ["pairing-qr", pairingCode],
+    queryFn: () => api.getPairingQRCode(pairingCode),
+    enabled: Boolean(pairingCode),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    setShowQr(false);
+  }, [pairingCode]);
 
   const cfg = statusConfig[status];
   const StatusIcon = cfg.icon;
@@ -52,18 +66,57 @@ const ConnectionPanel = ({ pairingCode, status, onDisconnect, userName, peers, p
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-3xl font-bold tracking-[0.3em] font-mono text-foreground">
-              {pairingCode}
-            </span>
-            <Button variant="ghost" size="icon" onClick={copyCode} className="relative">
-              <Copy className="h-4 w-4" />
-              {copied && (
-                <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs bg-foreground text-card px-2 py-1 rounded animate-fade-in">
-                  Copied!
-                </span>
-              )}
-            </Button>
+          <div className="[perspective:1200px]">
+            <div className={`relative min-h-[14rem] transition-transform duration-500 [transform-style:preserve-3d] ${showQr ? "[transform:rotateY(180deg)]" : ""}`}>
+              <div className={`absolute inset-0 flex items-center rounded-2xl border border-border bg-card/60 p-5 shadow-sm [backface-visibility:hidden] ${showQr ? "pointer-events-none" : ""}`}>
+                <div className="flex w-full items-center gap-3">
+                  <span className="text-3xl font-bold tracking-[0.3em] font-mono text-foreground">
+                    {pairingCode}
+                  </span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button variant="ghost" size="icon" onClick={copyCode} className="relative">
+                      <Copy className="h-4 w-4" />
+                      {copied && (
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-xs bg-foreground text-card px-2 py-1 rounded animate-fade-in">
+                          Copied!
+                        </span>
+                      )}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setShowQr(true)} aria-label="Show QR code">
+                      <QrCode className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card/60 p-5 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)] ${showQr ? "" : "pointer-events-none"}`}
+                onClick={() => setShowQr(false)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setShowQr(false);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label="Hide QR code"
+              >
+                <div className="rounded-2xl bg-white p-3 shadow-inner">
+                  {pairingQr?.qrcode ? (
+                    <img src={pairingQr.qrcode} alt={`QR code for pairing ${pairingCode}`} className="h-36 w-36" />
+                  ) : (
+                    <div className="flex h-36 w-36 items-center justify-center text-center text-xs text-muted-foreground">
+                      {isQrError ? "QR unavailable" : isQrLoading ? "Loading QR..." : "Preparing QR..."}
+                    </div>
+                  )}
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Scan to join</p>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Tap to return to the code</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

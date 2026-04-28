@@ -69,7 +69,8 @@ const normalizeDeviceName = (value?: string | null) => value?.replace(/\s+/g, ""
 const Session = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const joinCode = location.state?.joinCode;
+  const searchParams = new URLSearchParams(location.search);
+  const joinCode = (location.state?.joinCode || searchParams.get("joinCode") || searchParams.get("code") || "").trim().toUpperCase() || undefined;
   const initialDeviceName = normalizeDeviceName(location.state?.deviceName || sessionStorage.getItem("deviceName") || "MyDevice");
   const { data: runtimeConfig } = useQuery<RuntimeConfig>({
     queryKey: ["runtime-config"],
@@ -79,6 +80,10 @@ const Session = () => {
   });
 
   const [pairing, setPairing] = useState<PairingCodeOut | null>(() => {
+    if (joinCode) {
+      return null;
+    }
+
     // Try to restore pairing from sessionStorage on refresh
     const saved = sessionStorage.getItem("pairing");
     return saved ? JSON.parse(saved) : null;
@@ -108,6 +113,17 @@ const Session = () => {
   const maintenanceMode = runtimeConfig?.maintenance_mode || "off";
   const featureFlags = runtimeConfig?.feature_flags;
   const policy = runtimeConfig?.policy;
+
+  useEffect(() => {
+    if (!joinCode) {
+      return;
+    }
+
+    if (pairing?.code !== joinCode) {
+      sessionStorage.removeItem("pairing");
+      setPairing(null);
+    }
+  }, [joinCode, pairing?.code]);
 
   const getConnectedPeerManagers = (peerIds?: string[]): WebRTCManager[] => {
     return Array.from(webrtcManagersRef.current.entries())

@@ -86,6 +86,12 @@ export interface PairingCodeOut {
   termination_reason?: string;
 }
 
+export interface PairingQrCodeOut {
+  code: string;
+  url: string;
+  qrcode: string;
+}
+
 export interface Message {
   type:
     | "text"
@@ -246,6 +252,12 @@ export const api = {
   async getPairing(code: string): Promise<PairingCodeOut> {
     const response = await fetch(`${API_BASE}/api/pairing/${code}`);
     if (!response.ok) throw new Error("Failed to get pairing");
+    return response.json();
+  },
+
+  async getPairingQRCode(code: string): Promise<PairingQrCodeOut> {
+    const response = await fetch(`${API_BASE}/api/pairing/${code}/qrcode`);
+    if (!response.ok) throw new Error("Failed to get pairing QR code");
     return response.json();
   },
 
