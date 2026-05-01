@@ -24,13 +24,6 @@ const Index = () => {
     <div className="min-h-screen flex items-center justify-center relative px-4">
       <BackgroundEffects />
 
-      <div className="absolute right-4 top-4 z-10">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/admin")} className="text-muted-foreground hover:text-foreground">
-          <Shield className="mr-2 h-4 w-4" />
-          Admin
-        </Button>
-      </div>
-
       <div className="w-full max-w-sm space-y-10 animate-fade-in">
         {/* Brand */}
         <div className="text-center space-y-3">
