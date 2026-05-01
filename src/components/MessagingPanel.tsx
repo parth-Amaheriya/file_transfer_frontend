@@ -512,6 +512,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
