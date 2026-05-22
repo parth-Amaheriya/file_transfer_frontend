@@ -57,6 +57,7 @@ const Admin = () => {
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = async (currentToken: string = token) => {
@@ -296,22 +297,29 @@ const Admin = () => {
 
       <main className="relative z-10 mx-auto max-w-7xl px-4 py-8 lg:px-6">
         <div className="flex flex-col gap-6">
+          {/* Header */}
           <header className="flex flex-col gap-4 rounded-[2rem] border border-amber-900/10 bg-white/80 p-6 shadow-[0_20px_70px_rgba(120,75,18,0.08)] backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <div className="flex items-center gap-3 text-stone-600">
-                <Sparkles className="h-4 w-4 text-amber-600" />
+                <Sparkles className="h-4 w-4 shrink-0 text-amber-600" />
                 <span className="text-xs uppercase tracking-[0.35em]">Admin Console</span>
               </div>
               <h1 className="text-3xl font-black tracking-tight text-foreground">Nexdrop Control Room</h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              <p className="max-w-2xl truncate text-sm leading-6 text-muted-foreground" title={`Signed in as ${currentUser.display_name || currentUser.email || currentUser.username} with ${currentUser.role} permissions.`}>
                 Signed in as <span className="font-semibold text-foreground">{currentUser.display_name || currentUser.email || currentUser.username}</span> with <span className="font-semibold text-foreground">{currentUser.role}</span> permissions.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
               <span className="rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5 text-xs uppercase tracking-[0.25em] text-stone-700">
                 Updated {formatDateTime(dashboard.settings.updated_at)}
               </span>
+              {currentUser.role === "owner" && (
+                <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setShowCreateModal(true)}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Add Admin
+                </Button>
+              )}
               <Button variant="outline" className="border-amber-900/10 bg-white/80 text-stone-700 hover:bg-amber-50" onClick={refreshDashboard}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refresh
@@ -323,18 +331,30 @@ const Admin = () => {
             </div>
           </header>
 
+          {/* Admin User Management - Owner Only */}
+          {currentUser.role === "owner" && (
+            <AdminUserManagement
+              token={token}
+              showCreateModal={showCreateModal}
+              onCloseCreateModal={() => setShowCreateModal(false)}
+            />
+          )}
+
+          {/* Main content grid */}
           <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+            {/* Sidebar - Settings */}
             <aside className="space-y-6">
               <section className="rounded-[2rem] border border-amber-900/10 bg-white/80 p-6 shadow-[0_20px_70px_rgba(120,75,18,0.08)] backdrop-blur-xl">
                 <div className="flex items-center gap-3">
-                  <Shield className="h-5 w-5 text-amber-600" />
-                  <div>
+                  <Shield className="h-5 w-5 shrink-0 text-amber-600" />
+                  <div className="min-w-0">
                     <p className="text-xs uppercase tracking-[0.3em] text-stone-500">Maintenance</p>
-                    <h2 className="text-lg font-semibold text-foreground">Mode and policy</h2>
+                    <h2 className="truncate text-lg font-semibold text-foreground">Mode and policy</h2>
                   </div>
                 </div>
 
                 <div className="mt-5 space-y-5">
+                  {/* Maintenance Mode */}
                   <div className="space-y-2">
                     <label className="text-xs uppercase tracking-[0.25em] text-stone-500">Maintenance mode</label>
                     <select
@@ -353,6 +373,7 @@ const Admin = () => {
                     </select>
                   </div>
 
+                  {/* Feature Flags */}
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-[0.25em] text-stone-500">Feature flags</p>
                     <div className="space-y-2">
@@ -370,15 +391,15 @@ const Admin = () => {
                             type="button"
                             onClick={() => updateFeatureFlag(key, !enabled)}
                             className={cn(
-                              "flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition",
+                              "flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition",
                               toggleTone(enabled),
                             )}
                           >
-                            <span>
-                              <span className="block text-sm font-medium text-foreground">{label}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-foreground">{label}</span>
                               <span className="block text-xs text-muted-foreground">{enabled ? "Enabled" : "Disabled"}</span>
                             </span>
-                            <span className="rounded-full border border-current px-2.5 py-1 text-[10px] uppercase tracking-[0.25em]">
+                            <span className="shrink-0 rounded-full border border-current px-2.5 py-1 text-[10px] uppercase tracking-[0.25em]">
                               {enabled ? "On" : "Off"}
                             </span>
                           </button>
@@ -387,6 +408,7 @@ const Admin = () => {
                     </div>
                   </div>
 
+                  {/* Policy Limits */}
                   <div className="space-y-3">
                     <p className="text-xs uppercase tracking-[0.25em] text-stone-500">Policy limits</p>
                     <div className="grid gap-3">
@@ -421,17 +443,19 @@ const Admin = () => {
               </section>
             </aside>
 
-            <section className="space-y-6">
+            {/* Main Content */}
+            <section className="space-y-6 min-w-0">
+              {/* Active Sessions */}
               <section className="rounded-[2rem] border border-amber-900/10 bg-white/80 p-6 shadow-[0_20px_70px_rgba(120,75,18,0.08)] backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <Users className="h-5 w-5 text-emerald-600" />
+                      <Users className="h-5 w-5 shrink-0 text-emerald-600" />
                       <p className="text-xs uppercase tracking-[0.3em] text-stone-500">Active sessions</p>
                     </div>
-                    <h2 className="mt-2 text-xl font-semibold text-foreground">Live pairings and connected devices</h2>
+                    <h2 className="mt-2 truncate text-xl font-semibold text-foreground">Live pairings and connected devices</h2>
                   </div>
-                  <span className="rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5 text-xs uppercase tracking-[0.25em] text-stone-700">
+                  <span className="shrink-0 rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5 text-xs uppercase tracking-[0.25em] text-stone-700">
                     {sessions.length} live
                   </span>
                 </div>
@@ -447,29 +471,29 @@ const Admin = () => {
                       return (
                         <article key={session.id} className="rounded-3xl border border-amber-900/10 bg-[#fff9f0] p-5 shadow-sm">
                           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="space-y-3">
+                            <div className="min-w-0 space-y-3">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-full border border-amber-900/10 bg-stone-900 px-3 py-1 text-sm font-semibold tracking-[0.35em] text-white">{session.code}</span>
                                 <span className={cn("rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.25em]", statusTone(session.status))}>
                                   {session.status}
                                 </span>
                               </div>
-                              <p className="text-sm text-stone-600">
+                              <p className="truncate text-sm text-stone-600" title={`Created by ${session.initiator.label || session.initiator.identifier}`}>
                                 Created by <span className="font-semibold text-foreground">{session.initiator.label || session.initiator.identifier}</span>
                               </p>
                               <div className="flex flex-wrap gap-3 text-xs text-stone-500">
                                 <span className="inline-flex items-center gap-2 rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5">
-                                  <Clock3 className="h-3.5 w-3.5" />
-                                  Expires {formatDateTime(session.expires_at)}
+                                  <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">Expires {formatDateTime(session.expires_at)}</span>
                                 </span>
-                                <span className="inline-flex items-center gap-2 rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5">
-                                  <Users className="h-3.5 w-3.5" />
+                                <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5">
+                                  <Users className="h-3.5 w-3.5 shrink-0" />
                                   {session.device_count || peers.length + 1} devices
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex shrink-0 flex-wrap gap-2">
                               <Button variant="destructive" size="sm" onClick={() => disconnectSession(session.id)}>
                                 Disconnect session
                               </Button>
@@ -479,9 +503,9 @@ const Admin = () => {
                           <div className="mt-4 space-y-3">
                             <p className="text-xs uppercase tracking-[0.25em] text-stone-500">Connected devices</p>
                             <div className="flex flex-wrap gap-2">
-                              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-900">
-                                <Sparkles className="h-3.5 w-3.5" />
-                                {session.initiator.label || session.initiator.identifier}
+                              <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-900">
+                                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate" title={session.initiator.label || session.initiator.identifier}>{session.initiator.label || session.initiator.identifier}</span>
                               </span>
                               {peers.length === 0 ? (
                                 <span className="rounded-full border border-amber-900/10 bg-white/80 px-3 py-2 text-xs text-muted-foreground">
@@ -489,12 +513,12 @@ const Admin = () => {
                                 </span>
                               ) : (
                                 peers.map((peer) => (
-                                  <span key={peer.identifier} className="inline-flex items-center gap-2 rounded-full border border-amber-900/10 bg-white/80 px-3 py-2 text-xs text-stone-700">
-                                    {peer.label || peer.identifier}
+                                  <span key={peer.identifier} className="inline-flex max-w-full items-center gap-2 rounded-full border border-amber-900/10 bg-white/80 px-3 py-2 text-xs text-stone-700">
+                                    <span className="truncate" title={peer.label || peer.identifier}>{peer.label || peer.identifier}</span>
                                     <button
                                       type="button"
                                       onClick={() => disconnectPeer(session.id, peer.identifier)}
-                                      className="rounded-full border border-amber-900/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-stone-500 transition hover:border-red-400/30 hover:text-red-700"
+                                      className="shrink-0 rounded-full border border-amber-900/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-stone-500 transition hover:border-red-400/30 hover:text-red-700"
                                     >
                                       Kick
                                     </button>
@@ -510,16 +534,17 @@ const Admin = () => {
                 </div>
               </section>
 
+              {/* Audit Log */}
               <section className="rounded-[2rem] border border-amber-900/10 bg-white/80 p-6 shadow-[0_20px_70px_rgba(120,75,18,0.08)] backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <BadgeAlert className="h-5 w-5 text-amber-600" />
+                      <BadgeAlert className="h-5 w-5 shrink-0 text-amber-600" />
                       <p className="text-xs uppercase tracking-[0.3em] text-stone-500">Audit log</p>
                     </div>
-                    <h2 className="mt-2 text-xl font-semibold text-foreground">Every admin action, in order</h2>
+                    <h2 className="mt-2 truncate text-xl font-semibold text-foreground">Every admin action, in order</h2>
                   </div>
-                  <span className="rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5 text-xs uppercase tracking-[0.25em] text-stone-700">
+                  <span className="shrink-0 rounded-full border border-amber-900/10 bg-white/80 px-3 py-1.5 text-xs uppercase tracking-[0.25em] text-stone-700">
                     {auditLog.length} entries
                   </span>
                 </div>
@@ -533,24 +558,24 @@ const Admin = () => {
                     auditLog.map((entry) => (
                       <div key={entry.id} className="rounded-2xl border border-amber-900/10 bg-[#fff9f0] p-4 shadow-sm">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="space-y-2">
+                          <div className="min-w-0 space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-foreground">{entry.actor}</span>
-                              <span className="rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600">
+                              <span className="truncate text-sm font-semibold text-foreground" title={entry.actor}>{entry.actor}</span>
+                              <span className="shrink-0 rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600">
                                 {entry.role}
                               </span>
-                              <span className="rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600">
+                              <span className="shrink-0 rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600">
                                 {entry.action}
                               </span>
                               {entry.target && (
-                                <span className="rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600">
+                                <span className="max-w-[150px] truncate rounded-full border border-amber-900/10 bg-white/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-stone-600" title={entry.target}>
                                   {entry.target}
                                 </span>
                               )}
                             </div>
                             <p className="text-sm text-stone-500">{formatDateTime(entry.timestamp)}</p>
                           </div>
-                          <span className={cn("rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.25em]", entry.status === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-900" : "border-red-400/20 bg-red-400/10 text-red-900")}>
+                          <span className={cn("shrink-0 rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.25em]", entry.status === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-900" : "border-red-400/20 bg-red-400/10 text-red-900")}>
                             {entry.status}
                           </span>
                         </div>
@@ -560,13 +585,6 @@ const Admin = () => {
                 </div>
               </section>
 
-              {/* Admin User Management - Owner Only */}
-              {currentUser.role === "owner" && (
-                <AdminUserManagement
-                  token={token}
-                  onRefresh={refreshDashboard}
-                />
-              )}
             </section>
           </div>
         </div>
@@ -581,13 +599,13 @@ const Admin = () => {
 
 interface AdminUserManagementProps {
   token: string;
-  onRefresh: () => Promise<void>;
+  showCreateModal: boolean;
+  onCloseCreateModal: () => void;
 }
 
-const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => {
+const AdminUserManagement = ({ token, showCreateModal, onCloseCreateModal }: AdminUserManagementProps) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -634,7 +652,7 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
         display_name: newDisplayName || undefined,
       });
       toast.success(`User '${newUsername}' created successfully`);
-      setShowCreateModal(false);
+      onCloseCreateModal();
       setNewUsername("");
       setNewEmail("");
       setNewPassword("");
@@ -695,21 +713,14 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
 
   return (
     <section className="rounded-[2rem] border border-amber-900/10 bg-white/80 p-6 shadow-[0_20px_70px_rgba(120,75,18,0.08)] backdrop-blur-xl">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <h2 className="truncate text-xl font-semibold text-foreground">Manage admin accounts</h2>
           <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-blue-600" />
+            <Users className="h-5 w-5 shrink-0 text-blue-600" />
             <p className="text-xs uppercase tracking-[0.3em] text-stone-500">Admin Users</p>
           </div>
-          <h2 className="mt-2 text-xl font-semibold text-foreground">Manage admin accounts</h2>
         </div>
-        <Button 
-          onClick={() => setShowCreateModal(true)} 
-          className="bg-blue-600 text-white hover:bg-blue-700"
-        >
-          <Sparkles className="mr-2 h-4 w-4" />
-          Add Admin
-        </Button>
       </div>
 
       {error && (
@@ -728,28 +739,21 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
           <div className="rounded-2xl border border-dashed border-blue-900/10 bg-blue-50/70 p-8 text-center">
             <Users className="h-8 w-8 text-blue-400 mx-auto mb-3" />
             <p className="text-sm text-stone-600 mb-4">No admin users yet.</p>
-            <Button 
-              onClick={() => setShowCreateModal(true)} 
-              className="bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Create First Admin
-            </Button>
           </div>
         ) : (
           <div className="space-y-3">
             {users.map((user) => (
               <div key={user.username} className="rounded-2xl border border-blue-900/10 bg-[#f0f9ff] p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="space-y-1">
+                  <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground">{user.display_name || user.username}</span>
-                      <span className="rounded-full border border-blue-900/10 bg-white px-2.5 py-0.5 text-[10px] uppercase tracking-[0.25em] text-stone-600">
+                      <span className="truncate font-semibold text-foreground" title={user.display_name || user.username}>{user.display_name || user.username}</span>
+                      <span className="shrink-0 rounded-full border border-blue-900/10 bg-white px-2.5 py-0.5 text-[10px] uppercase tracking-[0.25em] text-stone-600">
                         {user.role}
                       </span>
                     </div>
                     {user.email && (
-                      <p className="text-xs text-stone-500">{user.email}</p>
+                      <p className="truncate text-xs text-stone-500" title={user.email}>{user.email}</p>
                     )}
                     {user.last_login_at && (
                       <p className="text-xs text-stone-500">
@@ -757,7 +761,7 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                       </p>
                     )}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <Button variant="outline" size="sm" onClick={() => openEditModal(user)}>
                       Edit
                     </Button>
@@ -774,24 +778,12 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
 
       {/* Create User Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-4 backdrop-blur-md sm:px-6 sm:py-6">
-          <div className="flex w-full max-w-md max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-blue-900/20 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-blue-900/10 px-6 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Create Admin User</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Add a new admin to your system</p>
-              </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg"
-              >
-                ×
-              </button>
-            </div>
+        <ModalOverlay onClose={onCloseCreateModal}>
+          <div className="my-auto flex w-full max-w-md max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-blue-900/20 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+            <ModalHeader title="Create Admin User" description="Add a new admin to your system" onClose={onCloseCreateModal} />
             
             <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Username *</label>
+              <FormField label="Username *">
                 <Input
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
@@ -799,9 +791,8 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   placeholder="admin_username"
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Email *</label>
+              </FormField>
+              <FormField label="Email *">
                 <Input
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
@@ -810,9 +801,8 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   type="email"
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Password *</label>
+              </FormField>
+              <FormField label="Password *">
                 <Input
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -821,9 +811,8 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   placeholder="••••••••"
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Role *</label>
+              </FormField>
+              <FormField label="Role *">
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as "viewer" | "operator" | "admin")}
@@ -833,21 +822,19 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   <option value="operator">Operator - Can manage sessions</option>
                   <option value="admin">Admin - Can manage settings</option>
                 </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Display Name (optional)</label>
+              </FormField>
+              <FormField label="Display Name (optional)">
                 <Input
                   value={newDisplayName}
                   onChange={(e) => setNewDisplayName(e.target.value)}
                   className="border-blue-900/10 bg-white"
                   placeholder="John Doe"
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div className="border-t border-blue-900/10 px-6 py-4">
-              <div className="flex gap-3">
-              <Button onClick={() => setShowCreateModal(false)} variant="outline" className="flex-1">
+            <ModalFooter>
+              <Button onClick={onCloseCreateModal} variant="outline" className="flex-1">
                 Cancel
               </Button>
               <Button 
@@ -857,32 +844,19 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
               >
                 Create User
               </Button>
-              </div>
-            </div>
+            </ModalFooter>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Edit User Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-4 backdrop-blur-md sm:px-6 sm:py-6">
-          <div className="flex w-full max-w-md max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-blue-900/20 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-blue-900/10 px-6 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Edit User: {showEditModal}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Update user details</p>
-              </div>
-              <button
-                onClick={() => setShowEditModal(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg"
-              >
-                ×
-              </button>
-            </div>
+        <ModalOverlay onClose={() => setShowEditModal(null)}>
+          <div className="my-auto flex w-full max-w-md max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-blue-900/20 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+            <ModalHeader title={`Edit User: ${showEditModal}`} description="Update user details" onClose={() => setShowEditModal(null)} />
             
             <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Email *</label>
+              <FormField label="Email *">
                 <Input
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
@@ -891,9 +865,8 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   type="email"
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Role *</label>
+              </FormField>
+              <FormField label="Role *">
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as "viewer" | "operator" | "admin" | "owner")}
@@ -905,20 +878,18 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
                   <option value="owner">Owner - Full access (cannot change)</option>
                 </select>
                 <p className="text-[10px] text-red-500 mt-1">Note: Owner role cannot be changed</p>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Display Name (optional)</label>
+              </FormField>
+              <FormField label="Display Name (optional)">
                 <Input
                   value={editDisplayName}
                   onChange={(e) => setEditDisplayName(e.target.value)}
                   className="border-blue-900/10 bg-white"
                   placeholder="John Doe"
                 />
-              </div>
+              </FormField>
             </div>
 
-            <div className="border-t border-blue-900/10 px-6 py-4">
-              <div className="flex gap-3">
+            <ModalFooter>
               <Button onClick={() => setShowEditModal(null)} variant="outline" className="flex-1">
                 Cancel
               </Button>
@@ -929,44 +900,96 @@ const AdminUserManagement = ({ token, onRefresh }: AdminUserManagementProps) => 
               >
                 Save Changes
               </Button>
-              </div>
-            </div>
+            </ModalFooter>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* Delete User Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-4 backdrop-blur-md sm:px-6 sm:py-6">
-          <div className="flex w-full max-w-md max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-red-900/20 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-red-900/10 px-6 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Delete User</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Are you sure you want to delete user '{showDeleteModal}'?</p>
-              </div>
-              <button
-                onClick={() => setShowDeleteModal(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg"
-              >
-                ×
-              </button>
-            </div>
+        <ModalOverlay onClose={() => setShowDeleteModal(null)}>
+          <div className="flex w-full max-w-md max-h-[85vh] flex-col overflow-hidden rounded-2xl border border-red-900/20 bg-white shadow-2xl">
+            <ModalHeader title="Delete User" description={`Are you sure you want to delete user '${showDeleteModal}'?`} onClose={() => setShowDeleteModal(null)} />
             
-            <div className="border-t border-red-900/10 px-6 py-4">
-              <div className="flex gap-3">
+            <ModalFooter>
               <Button onClick={() => setShowDeleteModal(null)} variant="outline" className="flex-1">
                 Cancel
               </Button>
               <Button onClick={handleDeleteUser} variant="destructive" className="flex-1">
                 Delete Permanently
               </Button>
-              </div>
-            </div>
+            </ModalFooter>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </section>
   );
 };
+
+// ============================================================================
+// Shared UI Components for Modals
+// ============================================================================
+
+interface ModalOverlayProps {
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+const ModalOverlay = ({ children, onClose }: ModalOverlayProps) => (
+  <div 
+    className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/70 px-4 py-4 backdrop-blur-md sm:px-6 sm:py-6"
+    onClick={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}
+  >
+    {children}
+  </div>
+);
+
+interface ModalHeaderProps {
+  title: string;
+  description?: string;
+  onClose: () => void;
+}
+
+const ModalHeader = ({ title, description, onClose }: ModalHeaderProps) => (
+  <div className="flex items-start justify-between border-b border-blue-900/10 px-6 py-4">
+    <div className="min-w-0 pr-4">
+      <h3 className="truncate text-lg font-semibold text-foreground">{title}</h3>
+      {description && <p className="mt-1 truncate text-sm text-muted-foreground">{description}</p>}
+    </div>
+    <button
+      onClick={onClose}
+      className="shrink-0 text-gray-400 hover:text-gray-600 text-lg leading-none"
+      aria-label="Close"
+    >
+      ×
+    </button>
+  </div>
+);
+
+interface FormFieldProps {
+  label: string;
+  children: React.ReactNode;
+}
+
+const FormField = ({ label, children }: FormFieldProps) => (
+  <div className="space-y-2">
+    <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{label}</label>
+    {children}
+  </div>
+);
+
+interface ModalFooterProps {
+  children: React.ReactNode;
+}
+
+const ModalFooter = ({ children }: ModalFooterProps) => (
+  <div className="border-t border-blue-900/10 px-6 py-4">
+    <div className="flex gap-3">
+      {children}
+    </div>
+  </div>
+);
 
 export default Admin;
