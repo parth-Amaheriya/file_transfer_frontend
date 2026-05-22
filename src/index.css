@@ -1,0 +1,395 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 20% 96%;
+    --foreground: 20 14% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 20 14% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14% 10%;
+
+    --primary: 21 90% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 15% 93%;
+    --secondary-foreground: 20 14% 10%;
+
+    --muted: 30 10% 91%;
+    --muted-foreground: 20 6% 46%;
+
+    --accent: 85 60% 28%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 10% 88%;
+    --input: 30 10% 88%;
+    --ring: 21 90% 40%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 20 14% 10%;
+    --sidebar-primary: 21 90% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 15% 93%;
+    --sidebar-accent-foreground: 20 14% 10%;
+    --sidebar-border: 30 10% 88%;
+    --sidebar-ring: 21 90% 40%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .surface {
+    @apply bg-card border border-border;
+  }
+
+  .surface-elevated {
+    @apply bg-card border border-border shadow-sm;
+  }
+
+  /* Apple-inspired notification indicator animations */
+  @keyframes notificationPulse {
+    0% {
+      transform: scale(0.9) translateZ(0);
+      opacity: 0;
+    }
+    70% {
+      transform: scale(1.08) translateZ(0);
+    }
+    100% {
+      transform: scale(1) translateZ(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes notificationBreath {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+    }
+  }
+
+  .notification-badge {
+    @apply inline-flex items-center justify-center rounded-full transition-all transform;
+    animation: notificationPulse 0.5s cubic-bezier(0.23, 1, 0.320, 1) forwards,
+              notificationBreath 3s ease-in-out 0.6s infinite;
+    will-change: transform, box-shadow, opacity;
+  }
+
+  .emoji-picker-popover em-emoji-picker {
+    height: 320px !important;
+    max-height: 320px !important;
+    min-height: 230px !important;
+  }
+}
+
+@layer components {
+  .space-loader {
+    @apply relative inline-flex flex-col items-center justify-center select-none;
+  }
+
+  .space-loader__stage {
+    position: relative;
+    width: 240px;
+    height: 140px;
+  }
+
+  .space-loader[data-size="sm"] .space-loader__stage {
+    width: 180px;
+    height: 104px;
+  }
+
+  .space-loader[data-size="lg"] .space-loader__stage {
+    width: 280px;
+    height: 164px;
+  }
+
+  .space-loader__ship {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-left: -50px;
+    margin-top: -18px;
+    animation: space-loader-speeder 0.4s linear infinite;
+    filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.15));
+  }
+
+  .space-loader__ship > span {
+    height: 5px;
+    width: 35px;
+    background: #000;
+    position: absolute;
+    top: -19px;
+    left: 60px;
+    border-radius: 2px 10px 1px 0;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+  }
+
+  .space-loader__base span {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-top: 6px solid transparent;
+    border-right: 100px solid #000;
+    border-bottom: 6px solid transparent;
+  }
+
+  .space-loader__base span::before {
+    content: "";
+    height: 22px;
+    width: 22px;
+    border-radius: 50%;
+    background: #000;
+    position: absolute;
+    right: -110px;
+    top: -16px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+  }
+
+  .space-loader__base span::after {
+    content: "";
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-top: 0 solid transparent;
+    border-right: 55px solid #000;
+    border-bottom: 16px solid transparent;
+    top: -16px;
+    right: -98px;
+  }
+
+  .space-loader__face {
+    position: absolute;
+    height: 12px;
+    width: 20px;
+    background: #000;
+    border-radius: 20px 20px 0 0;
+    transform: rotate(-40deg);
+    right: -125px;
+    top: -15px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+  }
+
+  .space-loader__face::after {
+    content: "";
+    height: 12px;
+    width: 12px;
+    background: #000;
+    right: 4px;
+    top: 7px;
+    position: absolute;
+    transform: rotate(40deg);
+    transform-origin: 50% 50%;
+    border-radius: 0 0 0 2px;
+  }
+
+  .space-loader__ship > span > span:nth-child(1),
+  .space-loader__ship > span > span:nth-child(2),
+  .space-loader__ship > span > span:nth-child(3),
+  .space-loader__ship > span > span:nth-child(4) {
+    width: 30px;
+    height: 1px;
+    background: #000;
+    position: absolute;
+    animation: space-loader-fazer-1 0.2s linear infinite;
+  }
+
+  .space-loader__ship > span > span:nth-child(2) {
+    top: 3px;
+    animation: space-loader-fazer-2 0.4s linear infinite;
+  }
+
+  .space-loader__ship > span > span:nth-child(3) {
+    top: 1px;
+    animation: space-loader-fazer-3 0.4s linear infinite;
+    animation-delay: -1s;
+  }
+
+  .space-loader__ship > span > span:nth-child(4) {
+    top: 4px;
+    animation: space-loader-fazer-4 1s linear infinite;
+    animation-delay: -1s;
+  }
+
+  .space-loader__longfazers {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+  }
+
+  .space-loader__longfazers span {
+    position: absolute;
+    height: 2px;
+    width: 20%;
+    background: #000;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.08);
+  }
+
+  .space-loader__longfazers span:nth-child(1) {
+    top: 20%;
+    animation: space-loader-longfazer-1 0.6s linear infinite;
+    animation-delay: -5s;
+  }
+
+  .space-loader__longfazers span:nth-child(2) {
+    top: 40%;
+    animation: space-loader-longfazer-2 0.8s linear infinite;
+    animation-delay: -1s;
+  }
+
+  .space-loader__longfazers span:nth-child(3) {
+    top: 60%;
+    animation: space-loader-longfazer-3 0.6s linear infinite;
+  }
+
+  .space-loader__longfazers span:nth-child(4) {
+    top: 80%;
+    animation: space-loader-longfazer-4 0.5s linear infinite;
+    animation-delay: -3s;
+  }
+
+  @keyframes space-loader-fazer-1 {
+    0% {
+      left: 0;
+    }
+    100% {
+      left: -80px;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-fazer-2 {
+    0% {
+      left: 0;
+    }
+    100% {
+      left: -100px;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-fazer-3 {
+    0% {
+      left: 0;
+    }
+    100% {
+      left: -50px;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-fazer-4 {
+    0% {
+      left: 0;
+    }
+    100% {
+      left: -150px;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-speeder {
+    0% {
+      transform: translate(2px, 1px) rotate(0deg);
+    }
+    10% {
+      transform: translate(-1px, -3px) rotate(-1deg);
+    }
+    20% {
+      transform: translate(-2px, 0px) rotate(1deg);
+    }
+    30% {
+      transform: translate(1px, 2px) rotate(0deg);
+    }
+    40% {
+      transform: translate(1px, -1px) rotate(1deg);
+    }
+    50% {
+      transform: translate(-1px, 3px) rotate(-1deg);
+    }
+    60% {
+      transform: translate(-1px, 1px) rotate(0deg);
+    }
+    70% {
+      transform: translate(3px, 1px) rotate(-1deg);
+    }
+    80% {
+      transform: translate(-2px, -1px) rotate(1deg);
+    }
+    90% {
+      transform: translate(2px, 1px) rotate(0deg);
+    }
+    100% {
+      transform: translate(1px, -2px) rotate(-1deg);
+    }
+  }
+
+  @keyframes space-loader-longfazer-1 {
+    0% {
+      left: 200%;
+    }
+    100% {
+      left: -200%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-longfazer-2 {
+    0% {
+      left: 200%;
+    }
+    100% {
+      left: -200%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-longfazer-3 {
+    0% {
+      left: 200%;
+    }
+    100% {
+      left: -100%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes space-loader-longfazer-4 {
+    0% {
+      left: 200%;
+    }
+    100% {
+      left: -100%;
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .space-loader__ship,
+    .space-loader__ship > span > span,
+    .space-loader__longfazers span {
+      animation: none !important;
+    }
+  }
+}
