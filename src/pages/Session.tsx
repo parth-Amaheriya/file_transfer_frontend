@@ -254,6 +254,28 @@ const Session = () => {
     }
 
     chunkIndices.forEach((chunkIndex) => transfer.peerChunks[peerId].add(chunkIndex));
+
+    const remotePeerIds = transfer.targetPeerIds.filter((targetPeerId) => targetPeerId !== deviceId);
+    if (remotePeerIds.length === 0) {
+      return;
+    }
+
+    const deliveredProgress = remotePeerIds.reduce((sum, targetPeerId) => {
+      if (transfer.peerHasAll[targetPeerId]) {
+        return sum + 1;
+      }
+
+      const receivedCount = transfer.peerChunks[targetPeerId]?.size || 0;
+      return sum + Math.min(receivedCount, transfer.manifest.chunkCount) / transfer.manifest.chunkCount;
+    }, 0);
+
+    const progress = Math.min(100, Math.round((deliveredProgress / remotePeerIds.length) * 100));
+
+    setFiles((prev) => prev.map((file) =>
+      file.id === fileId
+        ? { ...file, progress, status: progress >= 100 ? "completed" : "transferring" }
+        : file
+    ));
   };
 
   const markOwnChunk = (fileId: string, chunkIndex: number, chunkData: Uint8Array) => {
@@ -902,12 +924,6 @@ const Session = () => {
 
         try {
           await manager.announceSwarmManifest(transfer.manifest);
-
-          setFiles((prev) => prev.map((fileItem) =>
-            fileItem.id === transfer.manifest.fileId
-              ? { ...fileItem, progress: 100, status: "completed" }
-              : fileItem
-          ));
         } catch (error) {
           console.error(`Failed to sync swarm manifest to ${peerId}:`, error);
         }
