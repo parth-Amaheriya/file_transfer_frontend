@@ -660,7 +660,7 @@ export class WebRTCManager {
   }
 
   private calculateChunkSize(fileSize: number): number {
-    return 16 * 1024;
+    return 64 * 1024;
   }
 
   private async hashChunk(chunkData: Uint8Array): Promise<string> {
@@ -863,7 +863,7 @@ export class WebRTCManager {
       throw new Error('Data channel not ready');
     }
 
-    await this.waitForBufferSpace();
+    await this.waitForBufferSpace(1024 * 1024);
     this.dataChannel.send(this.createBinaryChunkMessage(fileId, chunkIndex, chunkData));
   }
 
@@ -1457,6 +1457,7 @@ export class WebRTCManager {
         filename: file.name,
         file_size: file.size,
         mime_type: file.type,
+        chunk_size: chunkSize,
         timestamp: Date.now(),
         file_id: fileId, // Add fileId to message so receiver can track by it
         relay_hop: relayHop
@@ -1509,7 +1510,7 @@ export class WebRTCManager {
 
         // Wait for buffer to have space before sending
         try {
-          await this.waitForBufferSpace();
+          await this.waitForBufferSpace(1024 * 1024);
         } catch (error) {
           console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
           this.activeTransfers.delete(transferKey);
@@ -1582,7 +1583,7 @@ export class WebRTCManager {
     }
   }
 
-  private async waitForBufferSpace(): Promise<void> {
+  private async waitForBufferSpace(minBufferedAmount: number = 32 * 1024): Promise<void> {
     return new Promise((resolve, reject) => {
       const maxWaitTime = 30000; // 30 seconds max wait
       const startTime = Date.now();
@@ -1598,7 +1599,7 @@ export class WebRTCManager {
           return;
         }
 
-        if (this.dataChannel.bufferedAmount < 32 * 1024) { // Wait until buffer is less than 32KB
+        if (this.dataChannel.bufferedAmount < minBufferedAmount) {
           resolve();
         } else {
           // Check timeout

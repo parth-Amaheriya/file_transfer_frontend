@@ -50,8 +50,14 @@ type PendingTransferApproval = {
 };
 
 const calculateSwarmChunkSize = (fileSize: number) => {
+  if (fileSize > 100 * 1024 * 1024) {
+    return 128 * 1024;
+  }
+
   return 64 * 1024;
 };
+
+const MAX_OUTSTANDING_REQUESTS_PER_PEER = 8;
 
 const bytesToHex = (bytes: ArrayBuffer) =>
   Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -339,7 +345,7 @@ const Session = () => {
 
     for (const chunkIndex of orderedChunks) {
       const candidatePeers = connectedPeers.filter(
-        (peerId) => (transfer.peerHasAll[peerId] || transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) && outstandingByPeer(peerId) < 2
+        (peerId) => (transfer.peerHasAll[peerId] || transfer.peerChunks[peerId]?.has(chunkIndex) || peerId === manifest.originDeviceId) && outstandingByPeer(peerId) < MAX_OUTSTANDING_REQUESTS_PER_PEER
       );
 
       if (candidatePeers.length === 0) {
