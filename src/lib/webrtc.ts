@@ -58,6 +58,7 @@ export interface FileTransferProgress {
 interface ReceivedFileData {
   chunks?: Map<number, Uint8Array>; // For memory buffer mode
   fileHandle?: FileSystemFileHandle; // For streaming mode
+  writeStream?: FileSystemWritableFileStream; // Reused writable stream for streaming mode
   totalSize: number;
   mimeType: string;
   originDeviceId?: string;
@@ -611,14 +612,12 @@ export class WebRTCManager {
     }
   }
 
-  private async appendChunkToFile(fileHandle: FileSystemFileHandle, chunkData: Uint8Array, offset: number): Promise<void> {
+  private async appendChunkToFile(writeStream: FileSystemWritableFileStream, chunkData: Uint8Array, offset: number): Promise<void> {
     try {
-      const writable = await fileHandle.createWritable({ keepExistingData: true });
-      await writable.seek(offset);
+      await writeStream.seek(offset);
       // Convert to plain Uint8Array without shared buffer type issues
       const plainBuffer = new Uint8Array(chunkData);
-      await writable.write(plainBuffer as any);
-      await writable.close();
+      await writeStream.write(plainBuffer as any);
     } catch (error) {
       console.error('Error appending chunk to file:', error);
       throw error;
@@ -780,6 +779,15 @@ export class WebRTCManager {
     let completedFile: File;
 
     if (fileData.mode === 'streaming' && fileData.fileHandle) {
+      if (fileData.writeStream) {
+        try {
+          await fileData.writeStream.close();
+        } catch (error) {
+          console.warn('Error closing streaming file writer:', error);
+        }
+        fileData.writeStream = undefined;
+      }
+
       completedFile = await fileData.fileHandle.getFile();
     } else {
       const sortedChunks = Array.from(fileData.chunks.entries())
@@ -904,7 +912,42 @@ export class WebRTCManager {
               console.log('File size >100MB and FileSystem API available, requesting save location...');
               fileHandle = await this.requestFileHandle(message.filename, message.mime_type);
               mode = 'streaming';
+              const writeStream = await fileHandle.createWritable({ keepExistingData: true });
               console.log('File system streaming mode enabled');
+
+              // Persist the writable stream so each chunk does not reopen the file.
+              const receivedFileData: ReceivedFileData = {
+                totalSize: message.file_size,
+                mimeType: message.mime_type || '',
+                originDeviceId: message.origin_device_id || this.targetDeviceId,
+                fileId,
+                expectedChunks,
+                startTime: Date.now(),
+                mode,
+                chunks: undefined,
+                fileHandle,
+                writeStream,
+                bytesWritten: 0,
+                cancelled: false,
+                relayHop: message.relay_hop || 0,
+                chunkSize,
+                chunkHashes: message.chunk_hashes,
+                filename: message.filename
+              };
+
+              this.receivedFiles.set(fileId, receivedFileData);
+              this.receivingFilesByFileId.set(fileId, message.filename);
+
+              this.onFileProgress({
+                id: fileId,
+                name: message.filename,
+                size: message.file_size,
+                progress: 0,
+                status: 'receiving'
+              });
+
+              console.log(`File reception mode: ${mode} (${message.file_size} bytes)`);
+              return;
             } catch (error) {
               console.warn('Failed to enable streaming mode, falling back to memory buffer:', error);
               mode = 'memory';
@@ -918,10 +961,11 @@ export class WebRTCManager {
             fileId,
             expectedChunks,
             startTime: Date.now(),
-            mode,
-            chunks: mode === 'memory' ? new Map() : undefined,
-            fileHandle: mode === 'streaming' ? fileHandle : undefined,
-            bytesWritten: mode === 'streaming' ? 0 : undefined,
+            mode: 'memory',
+            chunks: new Map(),
+            fileHandle: undefined,
+            writeStream: undefined,
+            bytesWritten: undefined,
             cancelled: false,
             relayHop: message.relay_hop || 0,
             chunkSize,
@@ -1062,7 +1106,11 @@ export class WebRTCManager {
                 const chunkSize = fileData.chunkSize || this.calculateChunkSize(fileData.totalSize);
                 const offset = chunkIndex * chunkSize;
 
-                await this.appendChunkToFile(fileData.fileHandle!, chunkData, offset);
+                if (!fileData.writeStream) {
+                  throw new Error('Streaming writer is not available');
+                }
+
+                await this.appendChunkToFile(fileData.writeStream, chunkData, offset);
                 fileData.bytesWritten = (fileData.bytesWritten || 0) + chunkData.length;
                 const receivedChunks = Math.ceil((fileData.bytesWritten || 0) / chunkSize);
                 const progress = (receivedChunks / fileData.expectedChunks) * 100;
