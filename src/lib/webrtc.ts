@@ -1389,7 +1389,7 @@ export class WebRTCManager {
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files
-      const chunkSize = 16 * 1024;
+      const chunkSize = 64 * 1024;
       const totalChunks = Math.ceil(file.size / chunkSize);
 
       console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
