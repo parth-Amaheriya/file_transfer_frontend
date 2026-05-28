@@ -259,7 +259,6 @@ export class WebRTCManager {
     if (this.isInitiator) {
       this.dataChannel = peerConnection.createDataChannel('data', {
         ordered: true,
-        maxRetransmits: 10,
         protocol: 'file-transfer'
       });
       this.setupDataChannel();

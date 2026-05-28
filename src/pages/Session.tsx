@@ -54,6 +54,7 @@ const calculateSwarmChunkSize = (fileSize: number) => {
 };
 
 const MAX_OUTSTANDING_REQUESTS_PER_PEER = 2;
+const CHUNK_REQUEST_TIMEOUT_MS = 15000;
 
 const bytesToHex = (bytes: ArrayBuffer) =>
   Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -170,6 +171,7 @@ const Session = () => {
   const peerSelectionInitializedRef = useRef(false);
   const peerSelectionTouchedRef = useRef(false);
   const peerCleanupTimersRef = useRef<Record<string, number>>({});
+  const chunkRequestTimeoutsRef = useRef<Record<string, number>>({});
   const disconnectingRef = useRef(false);
   const loaderStartRef = useRef<number | null>(pairing ? null : Date.now());
   const loaderHideTimerRef = useRef<number | null>(null);
@@ -356,9 +358,28 @@ const Session = () => {
       transfer.inFlight[peerId].add(chunkIndex);
       const manager = webrtcManagersRef.current.get(peerId);
       if (manager) {
+        const timeoutKey = getChunkRequestTimeoutKey(fileId, peerId, chunkIndex);
+        const existingTimeout = chunkRequestTimeoutsRef.current[timeoutKey];
+        if (existingTimeout !== undefined) {
+          window.clearTimeout(existingTimeout);
+        }
+
+        chunkRequestTimeoutsRef.current[timeoutKey] = window.setTimeout(() => {
+          delete chunkRequestTimeoutsRef.current[timeoutKey];
+
+          const currentTransfer = swarmTransfersRef.current.get(fileId);
+          if (!currentTransfer || currentTransfer.completed || currentTransfer.ownedChunks.has(chunkIndex)) {
+            return;
+          }
+
+          currentTransfer.inFlight[peerId]?.delete(chunkIndex);
+          void requestNextChunks(fileId);
+        }, CHUNK_REQUEST_TIMEOUT_MS);
+
         manager.requestChunk(fileId, chunkIndex).catch((error) => {
           console.error(`Failed to request chunk ${chunkIndex} from ${peerId}:`, error);
           transfer.inFlight[peerId].delete(chunkIndex);
+          clearChunkRequestTimeout(fileId, peerId, chunkIndex);
         });
       }
     }
@@ -369,6 +390,17 @@ const Session = () => {
     if (timerId !== undefined) {
       window.clearTimeout(timerId);
       delete peerCleanupTimersRef.current[peerId];
+    }
+  };
+
+  const getChunkRequestTimeoutKey = (fileId: string, peerId: string, chunkIndex: number) => `${fileId}:${peerId}:${chunkIndex}`;
+
+  const clearChunkRequestTimeout = (fileId: string, peerId: string, chunkIndex: number) => {
+    const timeoutKey = getChunkRequestTimeoutKey(fileId, peerId, chunkIndex);
+    const timerId = chunkRequestTimeoutsRef.current[timeoutKey];
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId);
+      delete chunkRequestTimeoutsRef.current[timeoutKey];
     }
   };
 
@@ -654,6 +686,13 @@ const Session = () => {
       delete transfer.peerChunks[peerId];
       delete transfer.peerHasAll[peerId];
       delete transfer.inFlight[peerId];
+    }
+
+    for (const timeoutKey of Object.keys(chunkRequestTimeoutsRef.current)) {
+      if (timeoutKey.split(":")[1] === peerId) {
+        window.clearTimeout(chunkRequestTimeoutsRef.current[timeoutKey]);
+        delete chunkRequestTimeoutsRef.current[timeoutKey];
+      }
     }
 
     for (const [transferId, record] of Object.entries(pendingTransferApprovalsRef.current)) {
@@ -1192,6 +1231,9 @@ const Session = () => {
           if (transfer) {
             transfer.completed = true;
             transfer.peerChunks[remotePeerId] = new Set(Array.from({ length: transfer.manifest.chunkCount }, (_, index) => index));
+            for (let chunkIndex = 0; chunkIndex < transfer.manifest.chunkCount; chunkIndex += 1) {
+              clearChunkRequestTimeout(completedFile.fileId, remotePeerId, chunkIndex);
+            }
           }
           void requestNextChunks(completedFile.fileId);
 
@@ -1238,6 +1280,7 @@ const Session = () => {
           markPeerChunks(chunk.fileId, remotePeerId, [chunk.chunkIndex]);
 
           transfer.inFlight[remotePeerId]?.delete(chunk.chunkIndex);
+          clearChunkRequestTimeout(chunk.fileId, remotePeerId, chunk.chunkIndex);
 
           await broadcastHave(chunk.fileId, [chunk.chunkIndex]);
 
