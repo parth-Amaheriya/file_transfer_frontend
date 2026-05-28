@@ -350,6 +350,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
             file.status === "pending_approval" ? { label: "Awaiting approval", icon: Loader2, className: "text-amber-600" } :
             file.status === "approved" ? { label: "Approved", icon: CheckCircle2, className: "text-emerald-600" } :
             file.status === "transferring" ? { label: "Transferring", icon: Loader2, className: "text-primary" } :
+            file.status === "receiving" ? { label: "Receiving", icon: Loader2, className: "text-primary" } :
             file.status === "rejected" ? { label: "Rejected", icon: XCircle, className: "text-destructive" } :
             file.status === "cancelled" ? { label: "Cancelled", icon: XCircle, className: "text-amber-600" } :
             null;
@@ -366,7 +367,7 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                 <p className="text-xs text-muted-foreground">{file.size}</p>
                 {statusBadge && (
                   <p className={`mt-1 flex items-center gap-1.5 text-xs ${statusBadge.className}`}>
-                    <statusBadge.icon className={`h-3.5 w-3.5 ${(statusBadge.label === "Awaiting approval" || statusBadge.label === "Transferring") ? "animate-spin" : ""}`} />
+                    <statusBadge.icon className={`h-3.5 w-3.5 ${(statusBadge.label === "Awaiting approval" || statusBadge.label === "Transferring" || statusBadge.label === "Receiving") ? "animate-spin" : ""}`} />
                     <span>{statusBadge.label}</span>
                   </p>
                 )}

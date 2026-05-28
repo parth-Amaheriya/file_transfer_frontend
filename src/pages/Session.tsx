@@ -275,11 +275,13 @@ const Session = () => {
 
     const progress = Math.min(100, Math.round((deliveredProgress / remotePeerIds.length) * 100));
 
-    setFiles((prev) => prev.map((file) =>
-      file.id === fileId
-        ? { ...file, progress, status: progress >= 100 ? "completed" : "transferring" }
-        : file
-    ));
+    if (transfer.manifest.originDeviceId === deviceId) {
+      setFiles((prev) => prev.map((file) =>
+        file.id === fileId
+          ? { ...file, progress, status: progress >= 100 ? "completed" : "transferring" }
+          : file
+      ));
+    }
   };
 
   const markOwnChunk = (fileId: string, chunkIndex: number, chunkData: Uint8Array) => {
@@ -1074,12 +1076,14 @@ const Session = () => {
               
               if (allPeersCompleted && !transfer.completed) {
                 transfer.completed = true;
-                // Update the sender's UI to completed
-                setFiles((prev) => prev.map((file) =>
-                  file.id === message.file_id
-                    ? { ...file, progress: 100, status: "completed" }
-                    : file
-                ));
+                if (transfer.manifest.originDeviceId === deviceId) {
+                  // Update the sender's UI to completed
+                  setFiles((prev) => prev.map((file) =>
+                    file.id === message.file_id
+                      ? { ...file, progress: 100, status: "completed" }
+                      : file
+                  ));
+                }
               }
             }
             void requestNextChunks(message.file_id);
@@ -1099,11 +1103,13 @@ const Session = () => {
               
               if (allPeersCompleted) {
                 transfer.completed = true;
-                setFiles((prev) => prev.map((file) =>
-                  file.id === message.file_id
-                    ? { ...file, progress: 100, status: "completed" }
-                    : file
-                ));
+                if (transfer.manifest.originDeviceId === deviceId) {
+                  setFiles((prev) => prev.map((file) =>
+                    file.id === message.file_id
+                      ? { ...file, progress: 100, status: "completed" }
+                      : file
+                  ));
+                }
               }
             }
             void requestNextChunks(message.file_id);
