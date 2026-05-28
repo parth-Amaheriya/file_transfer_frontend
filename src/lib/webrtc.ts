@@ -1448,10 +1448,14 @@ export class WebRTCManager {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       throw new Error('Data channel not ready');
     }
-
-    console.log(`Starting file transfer: ${file.name} (${file.size} bytes)`);
-
-    const fileId = Math.random().toString(36).substr(2, 9);
+    const chunkSize = file.size > 150 * 1024 * 1024 
+      ? 256 * 1024     // 256KB for very large files
+      : file.size > 50 * 1024 * 1024 
+        ? 128 * 1024   // 128KB for medium-large
+        : 64 * 1024;   // 64KB for small files
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    console.log(`🚀 Starting file transfer: ${file.name} (${(file.size / (1024*1024)).toFixed(1)} MB)`);
+    console.log(`📦 Using chunk size: ${ (chunkSize/1024) }KB, Total chunks: ${totalChunks}`);    const fileId = Math.random().toString(36).substr(2, 9);
     const transferKey = `transfer-${fileId}`;
     
     // Track this transfer for cancellation
@@ -1534,10 +1538,9 @@ export class WebRTCManager {
 
         // Wait for buffer to have space before sending
         try {
-          await this.waitForBufferSpace();
+          await this.waitForBufferSpace(512 * 1024);
         } catch (error) {
-          console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
-          this.activeTransfers.delete(transferKey);
+console.error(`❌ Buffer wait failed on chunk ${chunkIndex}:`, error);          this.activeTransfers.delete(transferKey);
           throw new Error(`Buffer management failed: ${error}`);
         }
 
@@ -1568,11 +1571,11 @@ export class WebRTCManager {
         });
 
         // Log progress for large files
-        if (sentChunks % 100 === 0 || sentChunks === totalChunks) {
-          const elapsed = Date.now() - startTime;
-          const speed = (sentChunks * chunkSize) / (elapsed / 1000) / (1024 * 1024); // MB/s
-          console.log(`Sent ${sentChunks}/${totalChunks} chunks (${progress.toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
-        }
+        if (sentChunks % 50 === 0 || sentChunks === totalChunks) {
+        const elapsed = Date.now() - startTime;
+        const speed = (sentChunks * chunkSize) / (elapsed / 1000) / (1024 * 1024);
+        console.log(`📤 Sent ${sentChunks}/${totalChunks} chunks (${((sentChunks/totalChunks)*100).toFixed(1)}%) - ${speed.toFixed(2)} MB/s`);
+      }
       }
 
       // Send file end message (JSON) only if not cancelled
@@ -1612,36 +1615,36 @@ export class WebRTCManager {
     throw new Error('Data channel not ready');
   }
 
-  const currentBuffered = this.dataChannel.bufferedAmount;
-  if (currentBuffered < minBufferedAmount) {
+  const buffered = this.dataChannel.bufferedAmount;
+  if (buffered < minBufferedAmount) {
     return;
   }
 
-  console.warn(`[Buffer Backpressure] Waiting for buffer space. Current: ${ (currentBuffered / 1024 / 1024).toFixed(2) }MB, Threshold: ${ (minBufferedAmount / 1024 / 1024).toFixed(2) }MB`);
+  console.warn(`[BUFFER] Waiting - Current: ${(buffered / (1024*1024)).toFixed(2)}MB, Threshold: ${(minBufferedAmount / (1024*1024)).toFixed(2)}MB`);
 
   return new Promise((resolve, reject) => {
-    const maxWaitTime = 15000; // Reduced from 30s
+    const maxWaitTime = 12000; // 12 seconds
     const startTime = Date.now();
-    let attempts = 0;
+    let checks = 0;
 
     const checkBuffer = () => {
-      attempts++;
-      const buffered = this.dataChannel!.bufferedAmount;
+      checks++;
+      const current = this.dataChannel!.bufferedAmount;
 
-      if (buffered < minBufferedAmount) {
-        console.log(`[Buffer Backpressure] Cleared after ${attempts} checks. Buffered: ${ (buffered / 1024).toFixed(1) }KB`);
+      if (current < minBufferedAmount) {
+        console.log(`[BUFFER] Cleared after ${checks} checks (${((Date.now() - startTime)/1000).toFixed(2)}s)`);
         resolve();
         return;
       }
 
       if (Date.now() - startTime > maxWaitTime) {
-        console.error(`[Buffer Backpressure] TIMEOUT after ${attempts} checks. Final buffered: ${ (buffered / 1024 / 1024).toFixed(2) }MB`);
-        reject(new Error(`Buffer timeout. Still ${buffered} bytes queued.`));
+        console.error(`[BUFFER] TIMEOUT - Still blocked at ${(current / (1024*1024)).toFixed(2)}MB`);
+        reject(new Error(`Buffer timeout: ${current} bytes still queued`));
         return;
       }
 
-      // Smarter backoff
-      const delay = Math.min(100, Math.max(8, Math.floor(buffered / 10240))); // 10KB per ms
+      // Smart backoff based on buffer size
+      const delay = Math.min(80, Math.max(10, Math.floor(current / 16384))); // adaptive
       setTimeout(checkBuffer, delay);
     };
 
