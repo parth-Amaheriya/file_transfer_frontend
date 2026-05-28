@@ -288,10 +288,16 @@ export class WebRTCManager {
 
     // Set connection timeout (60 seconds for more reliable connections)
     this.connectionTimeout = window.setTimeout(() => {
-      if (this.peerConnection?.connectionState !== 'connected') {
-        console.error('WebRTC connection timeout - no connection established within 60 seconds');
-        this.onConnectionStateChange('failed');
+      if (this.dataChannel?.readyState === 'open' || this.peerConnection?.connectionState === 'connected') {
+        if (this.connectionTimeout) {
+          clearTimeout(this.connectionTimeout);
+          this.connectionTimeout = null;
+        }
+        return;
       }
+
+      console.error('WebRTC connection timeout - no connection established within 60 seconds');
+      this.onConnectionStateChange('failed');
     }, 60000);
   }
 
@@ -304,6 +310,10 @@ export class WebRTCManager {
 
     this.dataChannel.onopen = () => {
       console.log(`[WebRTC ${this.deviceId} -> ${this.targetDeviceId}] Data channel opened successfully at ${new Date().toISOString()}`);
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
       this.startHeartbeat();
     };
 
