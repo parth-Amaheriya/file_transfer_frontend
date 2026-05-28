@@ -981,6 +981,7 @@ export class WebRTCManager {
               });
 
               console.log(`File reception mode: ${mode} (${message.file_size} bytes)`);
+              this.onMessage(message);
               return;
             } catch (error) {
               console.warn('Failed to enable streaming mode, falling back to memory buffer:', error);
