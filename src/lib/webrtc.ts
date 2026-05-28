@@ -25,6 +25,7 @@ const HEARTBEAT_TIMEOUT_MS = 45000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5000;
 const RECOVERY_RETRY_DELAYS_MS = [1000, 3000, 7000, 15000, 30000];
 const MAX_RECOVERY_ATTEMPTS = 5;
+const MAX_BINARY_CHUNK_SIZE = 252 * 1024;
 const DOWNLOADED_FILE_IDS_KEY = 'downloadedFileIds';
 const DOWNLOADED_FILE_SIGNATURES_KEY = 'downloadedFileSignatures';
 
@@ -1459,7 +1460,7 @@ export class WebRTCManager {
       throw new Error('Data channel not ready');
     }
     const chunkSize = file.size > 150 * 1024 * 1024 
-      ? 256 * 1024     // 256KB for very large files
+      ? MAX_BINARY_CHUNK_SIZE     // Keep framed binary messages below the negotiated max-message-size
       : file.size > 50 * 1024 * 1024 
         ? 128 * 1024   // 128KB for medium-large
         : 64 * 1024;   // 64KB for small files
@@ -1475,7 +1476,7 @@ export class WebRTCManager {
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files
-      const chunkSize = 256 * 1024;
+      const chunkSize = MAX_BINARY_CHUNK_SIZE;
       const totalChunks = Math.ceil(file.size / chunkSize);
 
       console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
