@@ -13,6 +13,13 @@ const GOOGLE_STUN_SERVERS = [
   'stun:stun.l.google.com:19302',
   'stun:stun1.l.google.com:19302',
 ];
+const PUBLIC_TURN_SERVERS = [
+  {
+    urls: 'turn:turn.bistri.com:80',
+    username: 'homeo',
+    credential: 'homeo',
+  },
+];
 const HEARTBEAT_INTERVAL_MS = 15000;
 const HEARTBEAT_TIMEOUT_MS = 45000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5000;
@@ -178,6 +185,7 @@ export class WebRTCManager {
     const peerConnection = new RTCPeerConnection({
       iceServers: [
         ...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })),
+        ...PUBLIC_TURN_SERVERS,
       ]
     });
 
@@ -250,7 +258,7 @@ export class WebRTCManager {
     if (this.isInitiator) {
       this.dataChannel = peerConnection.createDataChannel('data', {
         ordered: true,
-        maxRetransmits: 30,
+        maxRetransmits: 10,
         protocol: 'file-transfer'
       });
       this.setupDataChannel();
@@ -325,6 +333,10 @@ export class WebRTCManager {
     }
   }
 
+  private hasActiveFileTransfer(): boolean {
+    return this.activeTransfers.size > 0 || this.receivedFiles.size > 0;
+  }
+
   private stopHeartbeat(): void {
     if (this.heartbeatInterval !== null) {
       clearInterval(this.heartbeatInterval);
@@ -363,6 +375,10 @@ export class WebRTCManager {
       return;
     }
 
+    if (this.hasActiveFileTransfer()) {
+      return;
+    }
+
     try {
       const timestamp = Date.now();
       this.lastHeartbeatSentAt = timestamp;
@@ -376,6 +392,10 @@ export class WebRTCManager {
 
   private async checkHeartbeatHealth(): Promise<void> {
     if (this.isClosing || !this.peerConnection || this.peerConnection.connectionState === 'closed') {
+      return;
+    }
+
+    if (this.hasActiveFileTransfer()) {
       return;
     }
 
@@ -395,6 +415,10 @@ export class WebRTCManager {
 
   private async scheduleRecovery(reason: string): Promise<void> {
     if (this.isClosing || this.isReconnecting || !this.peerConnection) {
+      return;
+    }
+
+    if (this.hasActiveFileTransfer()) {
       return;
     }
 
