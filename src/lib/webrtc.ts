@@ -1612,31 +1612,40 @@ export class WebRTCManager {
     throw new Error('Data channel not ready');
   }
 
-  if (this.dataChannel.bufferedAmount < minBufferedAmount) {
+  const currentBuffered = this.dataChannel.bufferedAmount;
+  if (currentBuffered < minBufferedAmount) {
     return;
   }
 
-  return new Promise((resolve, reject) => {
-    const maxWait = 15000;
-    const start = Date.now();
-    let timeoutId: number;
+  console.warn(`[Buffer Backpressure] Waiting for buffer space. Current: ${ (currentBuffered / 1024 / 1024).toFixed(2) }MB, Threshold: ${ (minBufferedAmount / 1024 / 1024).toFixed(2) }MB`);
 
-    const check = () => {
-      if (Date.now() - start > maxWait) {
-        reject(new Error('Buffer space timeout'));
+  return new Promise((resolve, reject) => {
+    const maxWaitTime = 15000; // Reduced from 30s
+    const startTime = Date.now();
+    let attempts = 0;
+
+    const checkBuffer = () => {
+      attempts++;
+      const buffered = this.dataChannel!.bufferedAmount;
+
+      if (buffered < minBufferedAmount) {
+        console.log(`[Buffer Backpressure] Cleared after ${attempts} checks. Buffered: ${ (buffered / 1024).toFixed(1) }KB`);
+        resolve();
         return;
       }
 
-      if (this.dataChannel!.bufferedAmount < minBufferedAmount) {
-        resolve();
-      } else {
-        // Exponential backoff
-        const delay = Math.min(50, Math.max(5, (this.dataChannel!.bufferedAmount / 1024) * 0.1));
-        timeoutId = window.setTimeout(check, delay);
+      if (Date.now() - startTime > maxWaitTime) {
+        console.error(`[Buffer Backpressure] TIMEOUT after ${attempts} checks. Final buffered: ${ (buffered / 1024 / 1024).toFixed(2) }MB`);
+        reject(new Error(`Buffer timeout. Still ${buffered} bytes queued.`));
+        return;
       }
+
+      // Smarter backoff
+      const delay = Math.min(100, Math.max(8, Math.floor(buffered / 10240))); // 10KB per ms
+      setTimeout(checkBuffer, delay);
     };
 
-    check();
+    checkBuffer();
   });
 }
 
