@@ -887,7 +887,7 @@ export class WebRTCManager {
       throw new Error('Data channel not ready');
     }
 
-    await this.waitForBufferSpace(1024 * 1024);
+    await this.waitForBufferSpace();
     this.dataChannel.send(this.createBinaryChunkMessage(fileId, chunkIndex, chunkData));
   }
 
@@ -1461,7 +1461,7 @@ export class WebRTCManager {
 
     try {
       // Dynamic chunk size: smaller for small files, larger for big files
-      const chunkSize = 64 * 1024;
+      const chunkSize = 256 * 1024;
       const totalChunks = Math.ceil(file.size / chunkSize);
 
       console.log(`Using chunk size: ${chunkSize} bytes, total chunks: ${totalChunks}`);
@@ -1534,7 +1534,7 @@ export class WebRTCManager {
 
         // Wait for buffer to have space before sending
         try {
-          await this.waitForBufferSpace(1024 * 1024);
+          await this.waitForBufferSpace();
         } catch (error) {
           console.error(`Failed to wait for buffer space on chunk ${chunkIndex}:`, error);
           this.activeTransfers.delete(transferKey);
@@ -1607,38 +1607,38 @@ export class WebRTCManager {
     }
   }
 
-  private async waitForBufferSpace(minBufferedAmount: number = 32 * 1024): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const maxWaitTime = 30000; // 30 seconds max wait
-      const startTime = Date.now();
-
-      const checkBuffer = () => {
-        if (!this.dataChannel) {
-          reject(new Error('Data channel not available'));
-          return;
-        }
-
-        if (this.dataChannel.readyState !== 'open') {
-          reject(new Error('Data channel is not open'));
-          return;
-        }
-
-        if (this.dataChannel.bufferedAmount < minBufferedAmount) {
-          resolve();
-        } else {
-          // Check timeout
-          if (Date.now() - startTime > maxWaitTime) {
-            reject(new Error('Timeout waiting for buffer space'));
-            return;
-          }
-
-          // Wait a bit and check again
-          setTimeout(checkBuffer, 5);
-        }
-      };
-      checkBuffer();
-    });
+  private async waitForBufferSpace(minBufferedAmount: number = 256 * 1024): Promise<void> {
+  if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+    throw new Error('Data channel not ready');
   }
+
+  if (this.dataChannel.bufferedAmount < minBufferedAmount) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    const maxWait = 15000;
+    const start = Date.now();
+    let timeoutId: number;
+
+    const check = () => {
+      if (Date.now() - start > maxWait) {
+        reject(new Error('Buffer space timeout'));
+        return;
+      }
+
+      if (this.dataChannel!.bufferedAmount < minBufferedAmount) {
+        resolve();
+      } else {
+        // Exponential backoff
+        const delay = Math.min(50, Math.max(5, (this.dataChannel!.bufferedAmount / 1024) * 0.1));
+        timeoutId = window.setTimeout(check, delay);
+      }
+    };
+
+    check();
+  });
+}
 
   close(): void {
     this.isClosing = true;
