@@ -47,7 +47,6 @@ const buildDownloadSignature = (fileData: {
 }): string => {
   return JSON.stringify([
     fileData.originDeviceId || 'unknown',
-    fileData.filename || 'unknown',
     fileData.totalSize,
     fileData.mimeType || 'application/octet-stream',
     fileData.relayHop || 0,
@@ -684,7 +683,7 @@ export class WebRTCManager {
     const downloadedSignatures = readStoredStringSet(DOWNLOADED_FILE_SIGNATURES_KEY);
 
     if (downloadedSignatures.has(signature)) {
-      console.log(`Skipping duplicate browser download for signature ${signature}`);
+      console.log(`Skipping duplicate browser download for content-based signature (file: ${fileData.filename})`);
       return false;
     }
 

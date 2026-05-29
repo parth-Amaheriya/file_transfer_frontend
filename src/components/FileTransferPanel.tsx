@@ -149,6 +149,11 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
     }
     
     files.slice(0, maxConcurrentUploads).forEach(file => onFileUpload(file, selectedPeerIds));
+
+    // Reset the file input value so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
