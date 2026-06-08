@@ -365,9 +365,9 @@ const FileTransferPanel = ({ peers, selectedPeerIds, onSelectionChange, onFileUp
                 <Icon className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="min-w-0 overflow-hidden">
-                <p className="w-full truncate text-sm font-medium">{file.name}</p>
+                <p className="w-full break-words text-sm font-medium">{file.name}</p>
                 {file.senderName && (
-                  <p className="w-full truncate text-[11px] text-muted-foreground">{file.senderName}</p>
+                  <p className="w-full break-words text-[11px] text-muted-foreground">{file.senderName}</p>
                 )}
                 <p className="text-xs text-muted-foreground">{file.size}</p>
                 {statusBadge && (

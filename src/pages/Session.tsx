@@ -1681,11 +1681,11 @@ const Session = () => {
           : connectionState;
 
   return (
-    <div className="min-h-screen relative">
+    <div className="relative min-h-screen overflow-x-clip">
       <BackgroundEffects />
 
       <header className="border-b border-border bg-card sticky top-0 z-10">
-        <div className="container max-w-6xl flex items-center justify-between h-14 px-4">
+        <div className="container max-w-6xl flex min-w-0 items-center justify-between h-14 px-4">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={handleDisconnect}>
               <ArrowLeft className="h-4 w-4" />
@@ -1704,7 +1704,7 @@ const Session = () => {
       </header>
 
       <main className="container max-w-6xl px-4 py-8">
-        <div className="grid lg:grid-cols-[300px_1fr] gap-6">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[300px_1fr]">
           <ConnectionPanel
             pairingCode={pairing.code}
             status={
@@ -1719,7 +1719,7 @@ const Session = () => {
             peerCount={livePeers.length}
           />
 
-          <div className="surface-elevated rounded-xl p-6">
+          <div className="surface-elevated min-w-0 rounded-xl p-6">
             {maintenanceMode !== "off" && (
               <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-900">
                 {maintenanceMode === "shutdown"
@@ -1741,31 +1741,33 @@ const Session = () => {
                 return updated;
               });
             }}>
-              <TabsList className="bg-secondary mb-6">
-                <TabsTrigger value="files" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
-                  <FileText className="h-3.5 w-3.5" />
-                  Files
-                  {unreadTabs.has("files") && (
-                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Messages
-                  {unreadTabs.has("messages") && (
-                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="code" className="gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm relative">
-                  <Code className="h-3.5 w-3.5" />
-                  Code
-                  {unreadTabs.has("code") && (
-                    <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
-                  )}
-                </TabsTrigger>
-              </TabsList>
+              <div className="mb-6 flex justify-center">
+                <TabsList className="max-w-full bg-secondary">
+                  <TabsTrigger value="files" className="relative flex-none gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                    <FileText className="h-3.5 w-3.5" />
+                    Files
+                    {unreadTabs.has("files") && (
+                      <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="messages" className="relative flex-none gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Messages
+                    {unreadTabs.has("messages") && (
+                      <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="code" className="relative flex-none gap-2 data-[state=active]:bg-card data-[state=active]:shadow-sm">
+                    <Code className="h-3.5 w-3.5" />
+                    Code
+                    {unreadTabs.has("code") && (
+                      <span className="notification-badge absolute top-0.5 right-0.5 h-2.5 w-2.5 bg-red-500 border border-white/30"></span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-              <TabsContent value="files">
+              <TabsContent value="files" className="min-w-0">
                 {incomingApprovalRequests.length > 0 && (
                   <div className="mb-5 space-y-3">
                     {incomingApprovalRequests.map((request) => (
@@ -1882,7 +1884,7 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="messages">
+              <TabsContent value="messages" className="min-w-0">
                 <MessagingPanel
                   messages={messages}
                   peers={livePeers}
@@ -1893,7 +1895,7 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="code">
+              <TabsContent value="code" className="min-w-0">
                 <CodeSnippetPanel onSendCode={sendCode} messages={messages} disabled={featureFlags ? !featureFlags.code_sharing : false} />
               </TabsContent>
             </Tabs>

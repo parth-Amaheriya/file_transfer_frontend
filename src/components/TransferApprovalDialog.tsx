@@ -72,9 +72,9 @@ const TransferApprovalDialog = ({ request, open, onAccept, onReject }: TransferA
 
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {(request?.files || []).map((file) => (
-              <div key={file.name} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+              <div key={file.name} className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-medium text-foreground">{file.name}</p>
                   <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
                 </div>
                 <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">

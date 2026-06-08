@@ -86,9 +86,9 @@ const CodeSnippetPanel = ({ onSendCode, messages, disabled = false }: CodeSnippe
   };
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Display received code snippets */}
-      <div className="space-y-3 max-h-[400px] overflow-y-auto">
+      <div className="min-w-0 space-y-3 max-h-[400px] overflow-y-auto">
         {codeSnippets.length === 0 ? (
           <p className="text-center text-muted-foreground text-sm py-8">
             No code snippets yet. Share your first snippet!
@@ -100,17 +100,17 @@ const CodeSnippetPanel = ({ onSendCode, messages, disabled = false }: CodeSnippe
 
             return (
               <Collapsible key={snippet.id} open={isExpanded} onOpenChange={(open) => setExpandedId(open ? snippet.id : null)}>
-                <div className="surface rounded-lg overflow-hidden animate-fade-in">
+                <div className="surface min-w-0 rounded-lg overflow-hidden animate-fade-in">
                   <CollapsibleTrigger asChild>
-                    <button className="w-full flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer">
+                    <button className="w-full min-w-0 flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer">
                       <div className="flex items-center gap-3 flex-1">
                         <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">{snippet.title || "Untitled Snippet"}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words text-sm font-medium text-foreground">{snippet.title || "Untitled Snippet"}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {snippet.senderName || (snippet.sender === "you" ? "You" : "Peer")}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="break-words text-xs text-muted-foreground">
                             {snippet.language} • {snippet.code.split("\n").length} lines • {snippet.sender === "you" ? "You" : "Peer"}
                           </p>
                         </div>
@@ -133,8 +133,8 @@ const CodeSnippetPanel = ({ onSendCode, messages, disabled = false }: CodeSnippe
 
                   <CollapsibleContent className="border-t border-border">
                     <div className="p-4 space-y-3 bg-card/50">
-                      <pre className="bg-black rounded-lg p-3 overflow-x-auto max-h-[300px] overflow-y-auto">
-                        <code className="text-sm text-gray-100 font-mono whitespace-pre-wrap">
+                      <pre className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-lg bg-black p-3">
+                        <code className="block break-words whitespace-pre-wrap text-sm font-mono text-gray-100">
                           {isExpanded ? snippet.code : truncated}
                         </code>
                       </pre>

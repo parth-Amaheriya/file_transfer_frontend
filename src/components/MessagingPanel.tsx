@@ -722,12 +722,12 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
                 )}
 
                 <div className="max-w-[75%]">
-                  <p className={`mb-1 max-w-full truncate text-[11px] font-medium text-[#9a9a9a] ${isYou ? "text-right" : "text-left"}`}>
+                  <p className={`mb-1 max-w-full break-words text-[11px] font-medium text-[#9a9a9a] ${isYou ? "text-right" : "text-left"}`}>
                     {senderLabel}
                   </p>
 
                   {isYou && recipientLabels.length > 0 && (
-                    <p className="mb-1 max-w-full truncate text-[11px] text-gray-400" title={`To ${recipientLabels.join(" ")}`}>
+                    <p className="mb-1 max-w-full break-words text-[11px] text-gray-400" title={`To ${recipientLabels.join(" ")}`}>
                       To {recipientLabels.join(" ")}
                     </p>
                   )}
@@ -737,7 +737,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
                       isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap text-[14px] leading-5">
+                    <p className="whitespace-pre-wrap break-words text-[14px] leading-5">
                       {msg.content}
                     </p>
                     <p className="mt-1 text-[10px] text-gray-400">
