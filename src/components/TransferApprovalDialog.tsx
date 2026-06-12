@@ -72,21 +72,21 @@ const TransferApprovalDialog = ({ request, open, onAccept, onReject }: TransferA
 
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
             {(request?.files || []).map((file) => (
-              <div key={file.name} className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2">
+              <div key={file.name} className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-medium text-foreground">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{formatBytes(file.size)}</p>
                 </div>
-                <span className="rounded-full bg-secondary px-2 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="shrink-0 rounded-md bg-secondary px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   {file.mimeType || "File"}
                 </span>
               </div>
             ))}
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Approval timeout: {Math.round((request?.approvalTimeoutMs || 30000) / 1000)} seconds</span>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <span className="leading-tight">Approval timeout: {Math.round((request?.approvalTimeoutMs || 30000) / 1000)} seconds</span>
           </div>
         </div>
 
