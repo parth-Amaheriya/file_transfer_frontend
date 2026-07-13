@@ -450,7 +450,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
   const inputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
-  const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel");
+  const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel" || message.type === "peer_name_changed" || message.type === "peer_connected");
   const allowEmoji = emojiEnabled && !disabled;
   const allowMentions = mentionsEnabled && !disabled;
 
@@ -750,12 +750,14 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
         )}
 
         {visibleMessages.map((msg, index) => {
-          // System message - file cancel
-          if (msg.type === "file_cancel") {
+          // System messages
+          if (msg.type === "file_cancel" || msg.type === "peer_name_changed" || msg.type === "peer_connected") {
             return (
               <div key={index} className="flex justify-center py-2">
                 <p className="text-xs text-muted-foreground">
-                  {msg.senderName || "Peer"} cancelled file share{msg.filename ? `: ${msg.filename}` : ""}
+                  {msg.type === "file_cancel" 
+                    ? `${msg.senderName || "Peer"} cancelled file share${msg.filename ? `: ${msg.filename}` : ""}`
+                    : msg.content}
                 </p>
               </div>
             );

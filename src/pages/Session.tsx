@@ -151,6 +151,10 @@ const Session = () => {
     return sessionStorage.getItem("deviceId") || Math.random().toString(36).substr(2, 9);
   });
   const [deviceName, setDeviceName] = useState<string>(initialDeviceName);
+  const deviceNameRef = useRef<string>(deviceName);
+  useEffect(() => {
+    deviceNameRef.current = deviceName;
+  }, [deviceName]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
@@ -988,6 +992,23 @@ const Session = () => {
 
           if (message.type === "peer_connected") {
             setPairing((prev) => prev ? { ...prev, status: "connected" } : null);
+            setMessages((prev) => [...prev, {
+              type: "peer_connected",
+              content: `${remotePeer.label || remotePeer.identifier} joined the session`,
+              sender: "peer",
+              timestamp: Date.now(),
+            }]);
+            
+            const currentName = deviceNameRef.current;
+            if (currentName && currentName !== "My Device") {
+              manager.sendMessage({
+                type: "peer_name_changed",
+                sender_device_id: deviceId,
+                sender_device_name: normalizeDeviceName(currentName),
+                content: normalizeDeviceName(currentName),
+                timestamp: Date.now(),
+              }).catch(console.error);
+            }
             return;
           }
 
@@ -1117,33 +1138,38 @@ const Session = () => {
           }
 
           if (message.type === "peer_name_changed" && message.sender_device_id && message.sender_device_name) {
-            // Update the peer's name in the pairing state so it reflects in the UI
             const newName = message.sender_device_name;
-            console.log(`Peer ${remotePeerId} changed name to: ${newName}`);
-            
+            let oldName = remotePeerId;
+
             setPairing((prev) => {
               if (!prev) return null;
-              const updatedPeers = (prev.peers || []).map((peer) => {
-                if (peer.identifier === remotePeerId) {
-                  return { ...peer, label: newName };
+              const peer = (prev.peers || []).find((p) => p.identifier === remotePeerId);
+              if (peer?.label) {
+                oldName = peer.label;
+              } else if (prev.initiator.identifier === remotePeerId && prev.initiator.label) {
+                oldName = prev.initiator.label;
+              }
+
+              const updatedPeers = (prev.peers || []).map((p) => {
+                if (p.identifier === remotePeerId) {
+                  return { ...p, label: newName };
                 }
-                return peer;
+                return p;
               });
-              // Also check if the initiator is the one who changed name
               const updatedInitiator = prev.initiator.identifier === remotePeerId
                 ? { ...prev.initiator, label: newName }
                 : prev.initiator;
               return { ...prev, peers: updatedPeers, initiator: updatedInitiator };
             });
             
-            // Show a small notification in messages
-            setMessages((prev) => [...prev, {
-              type: "text",
-              content: `${newName} joined the session`,
-              sender: "peer",
-              senderName: newName,
-              timestamp: Date.now(),
-            }]);
+            if (oldName !== newName) {
+              setMessages((prev) => [...prev, {
+                type: "peer_name_changed",
+                content: `${oldName} changed their name to ${newName}`,
+                sender: "peer",
+                timestamp: Date.now(),
+              }]);
+            }
             return;
           }
 
@@ -1557,8 +1583,18 @@ const Session = () => {
   };
 
   const handleUserNameChange = (newName: string) => {
+    const oldName = deviceName;
     setDeviceName(newName);
     
+    if (oldName !== newName && oldName.trim() !== "") {
+      setMessages((prev) => [...prev, {
+        type: "peer_name_changed",
+        content: `You changed your name to ${newName}`,
+        sender: "you",
+        timestamp: Date.now(),
+      }]);
+    }
+
     // Broadcast the name change to all connected peers
     const managers = getConnectedPeerManagers();
     if (managers.length > 0) {

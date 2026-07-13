@@ -314,6 +314,9 @@ export class WebRTCManager {
         this.connectionTimeout = null;
       }
       this.startHeartbeat();
+      
+      // Notify local listeners that the peer connected
+      this.onMessage({ type: 'peer_connected' } as Message);
     };
 
     this.dataChannel.onclose = () => {
