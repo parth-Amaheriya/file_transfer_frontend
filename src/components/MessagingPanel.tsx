@@ -418,7 +418,7 @@
 // export default MessagingPanel;
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
-import { Send, Smile } from "lucide-react";
+import { Send, Smile, Eye, EyeOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -442,6 +442,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
   const [caretPosition, setCaretPosition] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [privateMode, setPrivateMode] = useState(false);
+  const [hoveredMessageIndex, setHoveredMessageIndex] = useState<number | null>(null);
+  const [recentlyReceivedIndices, setRecentlyReceivedIndices] = useState<Set<number>>(new Set());
+  const prevMessagesLength = useRef(messages.length);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -511,6 +515,48 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (messages.length > prevMessagesLength.current) {
+      const newIndices: number[] = [];
+      for (let i = prevMessagesLength.current; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.sender !== "you" && msg.type === "text") {
+          newIndices.push(i);
+        }
+      }
+      
+      if (newIndices.length > 0) {
+        setRecentlyReceivedIndices((prev) => {
+          const next = new Set(prev);
+          newIndices.forEach((idx) => next.add(idx));
+          return next;
+        });
+        
+        newIndices.forEach((idx) => {
+          setTimeout(() => {
+            setRecentlyReceivedIndices((prev) => {
+              const next = new Set(prev);
+              next.delete(idx);
+              return next;
+            });
+          }, 2000);
+        });
+      }
+    }
+    prevMessagesLength.current = messages.length;
+  }, [messages]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setPrivateMode(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -673,6 +719,22 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
 
   return (
     <div className="flex h-[calc(100dvh-15rem)] min-h-0 flex-col overflow-visible rounded-lg border border-border bg-background shadow-xs">
+      {/* Messages Header */}
+      <div className="flex items-center justify-between border-b border-black/5 px-4 py-2 bg-muted/20">
+        <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          Messages
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPrivateMode(!privateMode)}
+          className="h-8 gap-2 px-3 text-xs"
+        >
+          {privateMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          Private {privateMode ? "ON" : "OFF"}
+        </Button>
+      </div>
+
       {/* Messages Container */}
       <div 
         ref={scrollRef} 
@@ -710,11 +772,15 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
               })
             : [];
           const senderInitials = getInitials(senderLabel);
+          const originalIndex = messages.indexOf(msg);
+          const isRecentlyReceived = recentlyReceivedIndices.has(originalIndex);
+          const shouldBlur = privateMode && hoveredMessageIndex !== index && !isRecentlyReceived;
 
           return (
               <div
                 key={index}
-                className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
+                className={`flex ${isYou ? "justify-end" : "justify-start"}`}
+              >
                 {!isYou && (
                   <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-black/5 bg-[#f3f0ea] text-xs font-semibold text-[#9a9a9a]">
                     {senderInitials || "P"}
@@ -733,11 +799,14 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
                   )}
 
                   <div
-                    className={`rounded-2xl px-4 py-2.5 ${
+                    className={`rounded-2xl px-4 py-2.5 transition-all duration-200 ${
                       isYou ? "bg-[#e4eadb]" : "bg-[#f5e5d8]"
-                    }`}
+                    } ${shouldBlur ? "blur-md select-none" : ""}`}
+                    onMouseEnter={() => setHoveredMessageIndex(index)}
+                    onMouseLeave={() => setHoveredMessageIndex(null)}
+                    onTouchStart={() => setHoveredMessageIndex(index)}
                   >
-                    <p className="whitespace-pre-wrap break-words text-[14px] leading-5">
+                    <p className={`whitespace-pre-wrap break-words text-[14px] leading-5 ${shouldBlur ? "pointer-events-none" : ""}`}>
                       {msg.content}
                     </p>
                     <p className="mt-1 text-[10px] text-gray-400">
