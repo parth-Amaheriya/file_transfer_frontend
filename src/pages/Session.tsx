@@ -942,7 +942,28 @@ const Session = () => {
             (updatedPairing.peer_count || 0) !== (pairing.peer_count || 0) ||
             JSON.stringify(updatedPairing.peers) !== JSON.stringify(pairing.peers)) {
           console.log(`Pairing updated: status=${updatedPairing.status}, peers=${updatedPairing.peer_count || 0}`);
-          setPairing(updatedPairing);
+          
+          setPairing((prev) => {
+            if (!prev) return updatedPairing;
+            
+            // Preserve the custom labels that might have been updated via WebRTC
+            const preserveLabel = (newParticipant: DeviceDescriptor) => {
+              if (prev.initiator.identifier === newParticipant.identifier && prev.initiator.label !== newParticipant.label) {
+                return { ...newParticipant, label: prev.initiator.label };
+              }
+              const existingPeer = (prev.peers || []).find(p => p.identifier === newParticipant.identifier);
+              if (existingPeer && existingPeer.label !== newParticipant.label) {
+                return { ...newParticipant, label: existingPeer.label };
+              }
+              return newParticipant;
+            };
+
+            return {
+              ...updatedPairing,
+              initiator: preserveLabel(updatedPairing.initiator),
+              peers: (updatedPairing.peers || []).map(preserveLabel)
+            };
+          });
         }
       },
       (error) => {
