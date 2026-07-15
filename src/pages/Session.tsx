@@ -681,6 +681,24 @@ const Session = () => {
       webrtcManagersRef.current.delete(peerId);
     }
 
+    const peer = (pairing?.peers || []).find((p) => p.identifier === peerId) || 
+                 (pairing?.initiator?.identifier === peerId ? pairing.initiator : null);
+    const peerName = peer?.label || peer?.identifier || peerId;
+
+    setMessages((prev) => {
+      const lastMsg = prev[prev.length - 1];
+      if (lastMsg && lastMsg.type === "peer_disconnected" && lastMsg.sender_device_id === peerId && Date.now() - (lastMsg.timestamp as number) < 5000) {
+        return prev;
+      }
+      return [...prev, {
+        type: "peer_disconnected",
+        content: `${peerName} left the session`,
+        sender: "peer",
+        sender_device_id: peerId,
+        timestamp: Date.now(),
+      } as Message];
+    });
+
     delete peerConnectionStatesRef.current[peerId];
     setPeerConnectionStates((prev) => {
       const updated = { ...prev };
@@ -950,11 +968,9 @@ const Session = () => {
     );
     const participantIds = new Set(participants.map((participant) => participant.identifier));
 
-    for (const [peerId, manager] of webrtcManagersRef.current.entries()) {
+    for (const peerId of webrtcManagersRef.current.keys()) {
       if (!participantIds.has(peerId)) {
-        manager.close();
-        webrtcManagersRef.current.delete(peerId);
-        delete peerConnectionStatesRef.current[peerId];
+        cleanupPeerManager(peerId, 'removed from pairing via SSE');
       }
     }
 
@@ -1618,6 +1634,13 @@ const Session = () => {
 
   const handleDisconnect = () => {
     disconnectingRef.current = true;
+
+    if (pairing?.id && deviceId) {
+      // Intentionally not awaiting so UI updates instantly
+      api.leavePairing(pairing.id, deviceId).catch((error) => {
+        console.error("Failed to notify server of disconnect:", error);
+      });
+    }
 
     for (const peerId of Object.keys(peerCleanupTimersRef.current)) {
       clearPeerCleanupTimer(peerId);

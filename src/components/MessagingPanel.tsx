@@ -450,7 +450,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
   const inputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
-  const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel" || message.type === "peer_name_changed" || message.type === "peer_connected");
+  const visibleMessages = messages.filter((message) => message.type === "text" || message.type === "file_cancel" || message.type === "peer_name_changed" || message.type === "peer_connected" || message.type === "peer_disconnected");
   const allowEmoji = emojiEnabled && !disabled;
   const allowMentions = mentionsEnabled && !disabled;
 
@@ -751,7 +751,7 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
 
         {visibleMessages.map((msg, index) => {
           // System messages
-          if (msg.type === "file_cancel" || msg.type === "peer_name_changed" || msg.type === "peer_connected") {
+          if (msg.type === "file_cancel" || msg.type === "peer_name_changed" || msg.type === "peer_connected" || msg.type === "peer_disconnected") {
             const currentPeer = msg.sender_device_id ? peers.find(p => p.identifier === msg.sender_device_id) : null;
             const systemSenderName = currentPeer?.label || msg.senderName || "Peer";
 

@@ -110,6 +110,7 @@ export interface Message {
     | "file_end"
     | "file_cancel"
     | "peer_connected"
+    | "peer_disconnected"
     | "peer_name_changed"
     | "file_shared";
   content?: string;
