@@ -996,6 +996,7 @@ const Session = () => {
               type: "peer_connected",
               content: `${remotePeer.label || remotePeer.identifier} joined the session`,
               sender: "peer",
+              sender_device_id: remotePeer.identifier,
               timestamp: Date.now(),
             }]);
             
@@ -1044,7 +1045,7 @@ const Session = () => {
           if (message.type === "file_cancel") {
             const cancelLabel = message.content || `File cancelled: ${message.filename || message.file_name || "file"}`;
 
-            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, content: cancelLabel, timestamp: Date.now() }]);
+            setMessages((prev) => [...prev, { ...message, sender: "peer", sender_device_id: remotePeer.identifier, senderName: message.senderName || remotePeer.label || remotePeer.identifier, content: cancelLabel, timestamp: Date.now() }]);
 
             if (activeTab !== "files") {
               setUnreadTabs((prev) => new Set([...prev, "files"]));
@@ -1167,6 +1168,7 @@ const Session = () => {
                 type: "peer_name_changed",
                 content: `${oldName} changed their name to ${newName}`,
                 sender: "peer",
+                sender_device_id: remotePeer.identifier,
                 timestamp: Date.now(),
               }]);
             }
@@ -1174,7 +1176,7 @@ const Session = () => {
           }
 
           if (message.type !== "request" && message.type !== "have" && message.type !== "complete" && message.type !== "file_manifest" && message.type !== "file_end" && message.type !== "peer_name_changed") {
-            setMessages((prev) => [...prev, { ...message, sender: "peer", senderName: remotePeer.label || remotePeer.identifier, timestamp: Date.now() }]);
+            setMessages((prev) => [...prev, { ...message, sender: "peer", sender_device_id: remotePeer.identifier, senderName: message.senderName || remotePeer.label || remotePeer.identifier, timestamp: Date.now() }]);
 
             if (message.sender === "peer" || (message.sender !== "you" && message.sender !== undefined)) {
               let tabToMark = "";

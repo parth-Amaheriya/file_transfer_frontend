@@ -752,11 +752,14 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
         {visibleMessages.map((msg, index) => {
           // System messages
           if (msg.type === "file_cancel" || msg.type === "peer_name_changed" || msg.type === "peer_connected") {
+            const currentPeer = msg.sender_device_id ? peers.find(p => p.identifier === msg.sender_device_id) : null;
+            const systemSenderName = currentPeer?.label || msg.senderName || "Peer";
+
             return (
               <div key={index} className="flex justify-center py-2">
                 <p className="text-xs text-muted-foreground">
                   {msg.type === "file_cancel" 
-                    ? `${msg.senderName || "Peer"} cancelled file share${msg.filename ? `: ${msg.filename}` : ""}`
+                    ? `${systemSenderName} cancelled file share${msg.filename ? `: ${msg.filename}` : ""}`
                     : msg.content}
                 </p>
               </div>
@@ -766,7 +769,8 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
           if (msg.isCode) return null;
 
           const isYou = msg.sender === "you";
-          const senderLabel = isYou ? "You" : msg.senderName || "Peer";
+          const currentPeer = !isYou && msg.sender_device_id ? peers.find(p => p.identifier === msg.sender_device_id) : null;
+          const senderLabel = isYou ? "You" : currentPeer?.label || msg.senderName || "Peer";
           const recipientLabels = msg.target_peer_ids?.length
             ? msg.target_peer_ids.map((peerId) => {
                 const peer = peers.find((item) => item.identifier === peerId);
