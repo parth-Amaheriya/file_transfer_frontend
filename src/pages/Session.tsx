@@ -1684,6 +1684,7 @@ const Session = () => {
     sessionStorage.removeItem("pairing");
     sessionStorage.removeItem("deviceId");
     sessionStorage.removeItem("deviceName");
+    sessionStorage.removeItem("privateMode");
     localStorage.clear(); // Clear any persistent cache
     
     // Reset state
@@ -1849,7 +1850,7 @@ const Session = () => {
                 </TabsList>
               </div>
 
-              <TabsContent value="files" className="min-w-0">
+              <TabsContent value="files" className="min-w-0" forceMount>
                 {incomingApprovalRequests.length > 0 && (
                   <div className="mb-5 space-y-3">
                     {incomingApprovalRequests.map((request) => (
@@ -1966,7 +1967,7 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="messages" className="min-w-0">
+              <TabsContent value="messages" className="min-w-0" forceMount>
                 <MessagingPanel
                   messages={messages}
                   peers={livePeers}
@@ -1977,7 +1978,7 @@ const Session = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="code" className="min-w-0">
+              <TabsContent value="code" className="min-w-0" forceMount>
                 <CodeSnippetPanel onSendCode={sendCode} messages={messages} disabled={featureFlags ? !featureFlags.code_sharing : false} />
               </TabsContent>
             </Tabs>

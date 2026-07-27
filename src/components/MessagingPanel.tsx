@@ -442,7 +442,9 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
   const [caretPosition, setCaretPosition] = useState(0);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
-  const [privateMode, setPrivateMode] = useState(false);
+  const [privateMode, setPrivateMode] = useState(() => {
+    return sessionStorage.getItem("privateMode") === "true";
+  });
   const [hoveredMessageIndex, setHoveredMessageIndex] = useState<number | null>(null);
   const [recentlyReceivedIndices, setRecentlyReceivedIndices] = useState<Set<number>>(new Set());
   const prevMessagesLength = useRef(messages.length);
@@ -557,6 +559,10 @@ const MessagingPanel = ({ messages, peers, onSendMessage, disabled = false, emoj
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("privateMode", String(privateMode));
+  }, [privateMode]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
