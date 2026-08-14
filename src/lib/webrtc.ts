@@ -148,7 +148,6 @@ export class WebRTCManager {
   private activeTransfers: Map<string, { cancelled: boolean; fileId?: string; filename?: string }> = new Map(); // Track active file transfers for cancellation
   private receivingFilesByFileId: Map<string, string> = new Map(); // Track fileId -> filename for receiving files
   private sendingFilesByFileId: Map<string, { filename: string; size: number }> = new Map(); // Track fileId -> {filename, size} for sending files
-  private connectionPhase: 'stun_only' | 'dynamic_turn' | 'fallback' = 'stun_only';
 
   constructor(
     signalingServer: string,
@@ -185,18 +184,12 @@ export class WebRTCManager {
 
   private async createPeerConnection(): Promise<RTCPeerConnection> {
     let iceServers: RTCIceServer[] = [];
-    if (this.connectionPhase === 'stun_only') {
-      iceServers = GOOGLE_STUN_SERVERS.map((urls) => ({ urls }));
-    } else if (this.connectionPhase === 'dynamic_turn') {
-      try {
-        const turnServers = await turn.getServers();
-        iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...turnServers];
-      } catch (error) {
-        console.warn(`[WebRTC] Failed to fetch TURN credentials, falling back to public TURN`, error);
-        this.connectionPhase = 'fallback';
-        iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...PUBLIC_TURN_SERVERS];
-      }
-    } else {
+    
+    try {
+      const turnServers = await turn.getServers();
+      iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...turnServers];
+    } catch (error) {
+      console.warn(`[WebRTC] Failed to fetch dynamic TURN credentials, falling back to public TURN`, error);
       iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...PUBLIC_TURN_SERVERS];
     }
 
@@ -253,6 +246,7 @@ export class WebRTCManager {
           this.connectionTimeout = null;
         }
         this.resetRecoveryState();
+        void this.logConnectionStats(peerConnection);
       } else if (state === 'disconnected' || state === 'failed') {
         void this.scheduleRecovery(`peer connection ${state}`);
       } else if (state === 'closed') {
@@ -580,15 +574,6 @@ export class WebRTCManager {
       this.dataChannel = null;
       this.resetDataChannelPromise();
       this.isReconnecting = false;
-      
-      // Advance connection phase before rebuilding
-      if (this.connectionPhase === 'stun_only') {
-        this.connectionPhase = 'dynamic_turn';
-        console.log(`[WebRTC ${this.deviceId} -> ${this.targetDeviceId}] Advancing connection phase to dynamic_turn`);
-      } else if (this.connectionPhase === 'dynamic_turn') {
-        this.connectionPhase = 'fallback';
-        console.log(`[WebRTC ${this.deviceId} -> ${this.targetDeviceId}] Advancing connection phase to fallback`);
-      }
       
       this.peerConnection = await this.createPeerConnection();
 
@@ -1687,6 +1672,51 @@ console.error(`❌ Buffer wait failed on chunk ${chunkIndex}:`, error);         
     checkBuffer();
   });
 }
+  /**
+   * Helper function to log the active ICE candidate connection type.
+   * Useful for detecting whether we are connecting over host, STUN (srflx), or TURN (relay).
+   */
+  private async logConnectionStats(pc: RTCPeerConnection): Promise<void> {
+    try {
+      const stats = await pc.getStats();
+      let activeCandidatePair: any = null;
+
+      // Find the active/selected candidate pair
+      stats.forEach((report) => {
+        // Modern approach: look for transport report
+        if (report.type === 'transport' && report.selectedCandidatePairId) {
+          activeCandidatePair = stats.get(report.selectedCandidatePairId);
+        }
+        // Fallback approach: look for candidate-pair report that succeeded and was nominated
+        if (!activeCandidatePair && report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) {
+          activeCandidatePair = report;
+        }
+      });
+
+      if (activeCandidatePair) {
+        const localCandidate = stats.get(activeCandidatePair.localCandidateId);
+        const remoteCandidate = stats.get(activeCandidatePair.remoteCandidateId);
+
+        if (localCandidate && remoteCandidate) {
+          console.log(
+            `[WebRTC] Connection Stats - Local Candidate: ${localCandidate.candidateType} (${localCandidate.protocol}), Remote Candidate: ${remoteCandidate.candidateType} (${remoteCandidate.protocol})`
+          );
+          
+          if (localCandidate.candidateType === 'relay' || remoteCandidate.candidateType === 'relay') {
+            console.log(`[WebRTC] ⚠️ Connection established over TURN (relay)`);
+          } else if (localCandidate.candidateType === 'srflx' || remoteCandidate.candidateType === 'srflx') {
+            console.log(`[WebRTC] ⚡ Connection established over STUN (srflx)`);
+          } else if (localCandidate.candidateType === 'host' && remoteCandidate.candidateType === 'host') {
+            console.log(`[WebRTC] 🚀 Direct local network connection established (host)`);
+          }
+        }
+      } else {
+        console.log(`[WebRTC] Connection established, but could not determine candidate types from getStats().`);
+      }
+    } catch (error) {
+      console.warn(`[WebRTC] Failed to fetch connection stats:`, error);
+    }
+  }
 
   close(): void {
     this.isClosing = true;
