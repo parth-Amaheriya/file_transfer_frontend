@@ -33,8 +33,9 @@ class Turn {
     }
 
     try {
-      // Fetch new token directly from the specified endpoint
-      const response = await fetch(`https://filesync.app/api/credentials`, { method: "GET" });
+      // Fetch new token directly from the backend endpoint
+      const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+      const response = await fetch(`${API_BASE}/api/credentials`, { method: "GET" });
 
       if (!response.ok) {
         throw new Error("An issue occurred while getting the token.");
