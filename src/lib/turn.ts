@@ -8,8 +8,10 @@ class Turn {
   async getServers(): Promise<RTCIceServer[]> {
     await this._getCredentials();
     
-    // Use the hostname as the page is served from, identical to FileSync logic
-    const host = window.location.hostname;
+    // We must use 'filesync.app' because that is where the TURN server is hosted.
+    // If we use window.location.hostname, it would resolve to 'localhost' during dev,
+    // where we don't have a local TURN server running.
+    const host = 'filesync.app';
     
     return [
       { urls: `stun:${host}:3478` },
