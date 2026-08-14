@@ -1,4 +1,5 @@
 import type { Message, SignalingMessage } from "./api";
+import { turn } from "./turn";
 
 // Check if WebRTC is available
 const isWebRTCAvailable = typeof RTCPeerConnection !== 'undefined';
@@ -147,6 +148,7 @@ export class WebRTCManager {
   private activeTransfers: Map<string, { cancelled: boolean; fileId?: string; filename?: string }> = new Map(); // Track active file transfers for cancellation
   private receivingFilesByFileId: Map<string, string> = new Map(); // Track fileId -> filename for receiving files
   private sendingFilesByFileId: Map<string, { filename: string; size: number }> = new Map(); // Track fileId -> {filename, size} for sending files
+  private connectionPhase: 'stun_only' | 'dynamic_turn' | 'fallback' = 'stun_only';
 
   constructor(
     signalingServer: string,
@@ -181,13 +183,24 @@ export class WebRTCManager {
     });
   }
 
-  private createPeerConnection(): RTCPeerConnection {
-    const peerConnection = new RTCPeerConnection({
-      iceServers: [
-        ...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })),
-        ...PUBLIC_TURN_SERVERS,
-      ]
-    });
+  private async createPeerConnection(): Promise<RTCPeerConnection> {
+    let iceServers: RTCIceServer[] = [];
+    if (this.connectionPhase === 'stun_only') {
+      iceServers = GOOGLE_STUN_SERVERS.map((urls) => ({ urls }));
+    } else if (this.connectionPhase === 'dynamic_turn') {
+      try {
+        const turnServers = await turn.getServers();
+        iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...turnServers];
+      } catch (error) {
+        console.warn(`[WebRTC] Failed to fetch TURN credentials, falling back to public TURN`, error);
+        this.connectionPhase = 'fallback';
+        iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...PUBLIC_TURN_SERVERS];
+      }
+    } else {
+      iceServers = [...GOOGLE_STUN_SERVERS.map((urls) => ({ urls })), ...PUBLIC_TURN_SERVERS];
+    }
+
+    const peerConnection = new RTCPeerConnection({ iceServers });
 
     peerConnection.onicecandidate = (event) => {
       if (this.isClosing || this.isReconnecting) {
@@ -280,7 +293,7 @@ export class WebRTCManager {
       throw new Error('WebRTC is not available in this environment');
     }
 
-    this.peerConnection = this.createPeerConnection();
+    this.peerConnection = await this.createPeerConnection();
 
     // Start signaling
     await this.startSignaling();
@@ -567,7 +580,17 @@ export class WebRTCManager {
       this.dataChannel = null;
       this.resetDataChannelPromise();
       this.isReconnecting = false;
-      this.peerConnection = this.createPeerConnection();
+      
+      // Advance connection phase before rebuilding
+      if (this.connectionPhase === 'stun_only') {
+        this.connectionPhase = 'dynamic_turn';
+        console.log(`[WebRTC ${this.deviceId} -> ${this.targetDeviceId}] Advancing connection phase to dynamic_turn`);
+      } else if (this.connectionPhase === 'dynamic_turn') {
+        this.connectionPhase = 'fallback';
+        console.log(`[WebRTC ${this.deviceId} -> ${this.targetDeviceId}] Advancing connection phase to fallback`);
+      }
+      
+      this.peerConnection = await this.createPeerConnection();
 
       if (this.signalingInterval === null) {
         await this.startSignaling();
